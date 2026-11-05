@@ -1,0 +1,94 @@
+// Tarborn look tuning. Every visual number lives here.
+// Edit while the game runs (cargo run): the file is re-read about twice a second.
+// Colors are sRGB, 0..1. Distances are world pixels (48 px = 1 m).
+(
+    // Pale, worn industrial ruin behind everything.
+    background: (0.83, 0.79, 0.72),
+
+    level: (
+        solid: (0.29, 0.25, 0.22),
+        // Lighter lip along every floor-like edge.
+        edge: (0.49, 0.43, 0.37),
+        edge_width: 2.0,
+        // Edges whose outward normal points up at least this much get a lip.
+        edge_min_up: 0.7,
+        hazard: (0.82, 0.27, 0.18),
+        spike_width: 14.4,
+        spike_height: 9.6,
+        // Generated girders inside solids.
+        strut: (0.43, 0.38, 0.33),
+        strut_width: 3.0,
+        rivet: (0.54, 0.47, 0.40),
+        rivet_size: 3.0,
+        rivet_chance: 0.3,
+        cell_size: 16.0,
+        // A cell takes part only if it sits this far inside a solid.
+        cell_margin: 2.0,
+        seed: 7,
+        weights: (empty: 3.0, end: 0.3, straight: 4.0, corner: 1.2, junction: 0.6),
+        // Tar drips hanging from ceiling-like edges.
+        drips_per_100px: 0.6,
+        drip_length: (8.0, 26.0),
+        drip_width: 4.0,
+        drip_bulb: 4.5,
+        // Only edges with a solid this far below them drip (so nothing drips
+        // outside the room).
+        drip_max_drop: 960.0,
+    ),
+
+    tar: (
+        body: (0.07, 0.055, 0.05),
+        highlight: (1.0, 0.97, 0.92),
+        // Grows the sim outline outwards so the body covers its point markers.
+        round: 4.0,
+        // How far in from the edge the surface reaches full height (gloss falloff).
+        bevel: 10.0,
+        // Edge softening, in pixels.
+        aa: 1.0,
+        // Light direction (x, y, toward viewer) and specular sharpness.
+        light: (-0.45, 0.6, 0.65),
+        spec_power: 24.0,
+        spec_strength: 0.9,
+        // Colored rim that shows the blob's state (sticky, charging, hurt...).
+        rim_strength: 0.9,
+        rim_power: 2.5,
+        // How much the state color also tints the body.
+        tint_body: 0.12,
+        // Tar drops that heal.
+        pickup_radius: 9.6,
+    ),
+
+    enemy: (
+        fill: (0.94, 0.90, 0.83),
+        // Recovering, dizzy or prone: open to attack.
+        open: (0.70, 0.66, 0.60),
+        // Winding up or striking.
+        danger: (0.82, 0.27, 0.18),
+        // Just hit.
+        flash: (1.0, 1.0, 1.0),
+        // Tar coating on an enemy that is held or thrown.
+        coat: (0.07, 0.055, 0.05),
+        coat_width: 5.0,
+        // Outlines and marks keep their hue but are darkened to at most this
+        // Oklab lightness, so they read on the pale background.
+        ink_max_lightness: 0.42,
+        spit_radius_scale: 1.0,
+    ),
+
+    post: (
+        grain: 0.05,
+        grain_fps: 24.0,
+        vignette: 0.45,
+        // Distance from center (0) to corner (1) where darkening starts and ends.
+        vignette_start: 0.45,
+        vignette_end: 1.15,
+        // Dither look (V cycles looks): screen pixels per dither pixel.
+        dither_pixel: 3.0,
+        dither_spread: 0.8,
+        // Darkest to lightest.
+        palette: ((0.07, 0.055, 0.09), (0.27, 0.20, 0.31), (0.61, 0.48, 0.53), (0.93, 0.86, 0.77)),
+        // Pixels this red are kept as the danger color instead of dithered.
+        danger: (0.88, 0.33, 0.24),
+        red_keep: 0.35,
+    ),
+)

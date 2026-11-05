@@ -2,6 +2,7 @@
 //! rate, and draws the result. All gameplay rules live in `tarborn_sim`.
 
 mod audio;
+mod visuals;
 
 use bevy::app::RunFixedMainLoopSystems;
 use bevy::prelude::*;
@@ -13,6 +14,7 @@ use tarborn_sim::{
     ARENA_SPAWN, AttackPhase, DT, Enemy, EnemyKind, Intent, Phase, Sim, State, TICKS_PER_SECOND,
     TarModes,
 };
+use visuals::{Ink, Look, VisualTuning};
 
 const PIXELS_PER_METER: f32 = 48.0;
 const SPAWN: Vec2 = Vec2::new(0.0, 2.0);
@@ -33,6 +35,7 @@ fn main() {
         .insert_resource(Game::new(Room::Arena))
         .init_resource::<InputLatch>()
         .add_plugins(audio::SoundPlugin)
+        .add_plugins(visuals::VisualsPlugin)
         .add_systems(Startup, spawn_camera)
         // Sample input after Bevy has updated devices this frame but before the
         // fixed ticks run, so a press is simulated in the same frame it happened.
@@ -265,6 +268,32 @@ fn follow_camera(
     camera.translation = camera.translation.lerp(target, smoothing);
 }
 
+/// The blob's state as a color, or `None` in its resting state. The line look
+/// colors the outline with it; the filled looks show it as a rim on the tar.
+fn tar_state_color(game: &Game, latch: &InputLatch, now: f32) -> Option<Color> {
+    let sim = &game.sim;
+    // Blink while invulnerable after being hurt; white while lunging.
+    let blink = ((now * 16.0) as u32).is_multiple_of(2);
+    if sim.dead {
+        Some(Color::srgb(0.4, 0.4, 0.4))
+    } else if sim.controller.invulnerable() {
+        Some(Color::WHITE)
+    } else if sim.controller.is_shrunk() {
+        // Green deepening to red as the shrink charges.
+        let k = sim.controller.charge();
+        Some(Color::srgb(0.45 + 0.5 * k, 0.85 - 0.6 * k, 0.3))
+    } else if sim.player_invulnerable() && blink {
+        Some(Color::srgb(0.95, 0.3, 0.3))
+    } else if latch.modes.sticky {
+        Some(Color::srgb(0.45, 0.85, 0.3))
+    } else if latch.jump_held {
+        Some(Color::srgb(0.4, 0.7, 1.0))
+    } else {
+        None
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
 fn draw(
     game: Res<Game>,
     latch: Res<InputLatch>,
@@ -272,12 +301,18 @@ fn draw(
     time: Res<Time>,
     camera: Single<&Transform, With<Camera2d>>,
     window: Single<&Window>,
+    look: Res<Look>,
+    tuning: Res<VisualTuning>,
     mut gizmos: Gizmos,
 ) {
     let alpha = fixed.overstep_fraction();
     let sim = &game.sim;
+    let ink = Ink::new(*look, &tuning);
+    // The filled looks draw the level, tar, pickups and shots as meshes;
+    // gizmos keep only outlines, marks and the HUD there.
+    let lines = !look.filled();
     let ground = Color::srgb(0.55, 0.5, 0.45);
-    for solid in &game.sim.level.solids {
+    for solid in game.sim.level.solids.iter().filter(|_| lines) {
         let first = solid.vertices[0];
         gizmos.linestrip_2d(
             solid
@@ -291,7 +326,7 @@ fn draw(
 
     // Spikes: a zigzag along the top of each hazard.
     let spike = Color::srgb(0.95, 0.25, 0.25);
-    for hazard in &sim.hazards {
+    for hazard in sim.hazards.iter().filter(|_| lines) {
         let (min, max) = hazard
             .vertices
             .iter()
@@ -309,7 +344,7 @@ fn draw(
     }
 
     // Tar drops that heal.
-    for pickup in &sim.pickups {
+    for pickup in sim.pickups.iter().filter(|_| lines) {
         gizmos.circle_2d(
             *pickup * PIXELS_PER_METER,
             0.2 * PIXELS_PER_METER,
@@ -324,9 +359,10 @@ fn draw(
                 enemy,
                 game.enemy_position(i, alpha),
                 time.elapsed_secs(),
+                ink,
             );
             // A tar ring on an enemy that is held or flying after a throw.
-            if enemy.held || enemy.thrown {
+            if lines && (enemy.held || enemy.thrown) {
                 gizmos.circle_2d(
                     game.enemy_position(i, alpha) * PIXELS_PER_METER,
                     (enemy.radius + 0.12) * PIXELS_PER_METER,
@@ -337,7 +373,7 @@ fn draw(
     }
 
     // Spit in flight.
-    for shot in &sim.projectiles {
+    for shot in sim.projectiles.iter().filter(|_| lines) {
         gizmos.circle_2d(
             shot.position * PIXELS_PER_METER,
             SPIT_RADIUS * PIXELS_PER_METER,
@@ -358,30 +394,15 @@ fn draw(
         } else {
             Color::srgb(0.3, 0.3, 0.3)
         };
-        gizmos.circle_2d(at, 8.0 * zoom, color);
+        gizmos.circle_2d(at, 8.0 * zoom, ink.apply(color));
     }
-    draw_hud(&mut gizmos, sim, view, half, zoom);
+    draw_hud(&mut gizmos, sim, view, half, zoom, ink);
 
-    let modes = latch.modes;
-    // Blink while invulnerable after being hurt; white while lunging.
-    let blink = ((time.elapsed_secs() * 16.0) as u32).is_multiple_of(2);
-    let tar = if sim.dead {
-        Color::srgb(0.4, 0.4, 0.4)
-    } else if sim.controller.invulnerable() {
-        Color::WHITE
-    } else if sim.controller.is_shrunk() {
-        // Green deepening to red as the shrink charges.
-        let k = sim.controller.charge();
-        Color::srgb(0.45 + 0.5 * k, 0.85 - 0.6 * k, 0.3)
-    } else if sim.player_invulnerable() && blink {
-        Color::srgb(0.95, 0.3, 0.3)
-    } else if modes.sticky {
-        Color::srgb(0.45, 0.85, 0.3)
-    } else if latch.jump_held && !modes.sticky {
-        Color::srgb(0.4, 0.7, 1.0)
-    } else {
-        Color::srgb(0.95, 0.75, 0.3)
-    };
+    if !lines {
+        return;
+    }
+    let tar =
+        tar_state_color(&game, &latch, time.elapsed_secs()).unwrap_or(Color::srgb(0.95, 0.75, 0.3));
     let outline = game.blob_outline(alpha);
     gizmos.linestrip_2d(
         outline.iter().copied().chain(std::iter::once(outline[0])),
@@ -394,26 +415,26 @@ fn draw(
 
 /// Enemies are plain shapes whose colour and marks show their state, so the
 /// player can read how vulnerable each one is at a glance.
-fn draw_enemy(gizmos: &mut Gizmos, enemy: &Enemy, at: Vec2, now: f32) {
+fn draw_enemy(gizmos: &mut Gizmos, enemy: &Enemy, at: Vec2, now: f32, ink: Ink) {
     let r = enemy.radius * PIXELS_PER_METER;
     let facing = Vec2::X * enemy.facing;
     let base = match enemy.kind {
-        EnemyKind::Dummy => Color::srgb(0.6, 0.6, 0.65),
-        EnemyKind::Grub => Color::srgb(0.75, 0.55, 0.85),
-        EnemyKind::Guard => Color::srgb(0.45, 0.6, 0.95),
-        EnemyKind::Spitter => Color::srgb(0.95, 0.6, 0.35),
-        EnemyKind::Skitter => Color::srgb(0.95, 0.9, 0.4),
-        EnemyKind::Brute => Color::srgb(0.75, 0.35, 0.3),
+        EnemyKind::Dummy => ink.apply(Color::srgb(0.6, 0.6, 0.65)),
+        EnemyKind::Grub => ink.apply(Color::srgb(0.75, 0.55, 0.85)),
+        EnemyKind::Guard => ink.apply(Color::srgb(0.45, 0.6, 0.95)),
+        EnemyKind::Spitter => ink.apply(Color::srgb(0.95, 0.6, 0.35)),
+        EnemyKind::Skitter => ink.apply(Color::srgb(0.95, 0.9, 0.4)),
+        EnemyKind::Brute => ink.apply(Color::srgb(0.75, 0.35, 0.3)),
     };
     let flash = ((now * 20.0) as u32).is_multiple_of(2);
     let color = match enemy.state {
-        _ if enemy.hit_cooldown > 0.0 => Color::WHITE,
-        State::Attacking(AttackPhase::Windup) if flash => Color::srgb(1.0, 0.3, 0.2),
-        State::Attacking(AttackPhase::Strike) => Color::srgb(1.0, 0.3, 0.2),
+        _ if enemy.hit_cooldown > 0.0 => ink.apply(Color::WHITE),
+        State::Attacking(AttackPhase::Windup) if flash => ink.apply(Color::srgb(1.0, 0.3, 0.2)),
+        State::Attacking(AttackPhase::Strike) => ink.apply(Color::srgb(1.0, 0.3, 0.2)),
         State::Attacking(AttackPhase::Recover) | State::Dizzy | State::Prone => {
-            Color::srgb(0.5, 0.5, 0.5)
+            ink.apply(Color::srgb(0.5, 0.5, 0.5))
         }
-        State::Fleeing => Color::srgb(0.4, 0.9, 0.4),
+        State::Fleeing => ink.apply(Color::srgb(0.4, 0.9, 0.4)),
         _ => base,
     };
 
@@ -476,11 +497,11 @@ fn draw_enemy(gizmos: &mut Gizmos, enemy: &Enemy, at: Vec2, now: f32) {
                 gizmos.line_2d(
                     ground - Vec2::X * radius * k,
                     ground + Vec2::X * radius * k,
-                    Color::srgba(1.0, 0.3, 0.2, 0.6),
+                    ink.apply(Color::srgba(1.0, 0.3, 0.2, 0.6)),
                 );
             }
             State::Attacking(AttackPhase::Strike) => {
-                gizmos.circle_2d(at, radius, Color::srgb(1.0, 0.3, 0.2));
+                gizmos.circle_2d(at, radius, ink.apply(Color::srgb(1.0, 0.3, 0.2)));
             }
             _ => {}
         }
@@ -492,7 +513,11 @@ fn draw_enemy(gizmos: &mut Gizmos, enemy: &Enemy, at: Vec2, now: f32) {
     {
         let to = target * PIXELS_PER_METER;
         let k = (enemy.state_time / SPIT_AIM).min(1.0);
-        gizmos.line_2d(at, at.lerp(to, k), Color::srgba(1.0, 0.4, 0.2, 0.5));
+        gizmos.line_2d(
+            at,
+            at.lerp(to, k),
+            ink.apply(Color::srgba(1.0, 0.4, 0.2, 0.5)),
+        );
     }
     if enemy.kind != EnemyKind::Dummy && enemy.state != State::Prone {
         // An eye on the side it faces.
@@ -510,7 +535,7 @@ fn draw_enemy(gizmos: &mut Gizmos, enemy: &Enemy, at: Vec2, now: f32) {
             gizmos.line_2d(
                 x - Vec2::Y * r,
                 x + Vec2::Y * r,
-                Color::srgb(0.4, 0.95, 1.0),
+                ink.apply(Color::srgb(0.4, 0.95, 1.0)),
             );
         }
         if enemy.striking() {
@@ -518,7 +543,7 @@ fn draw_enemy(gizmos: &mut Gizmos, enemy: &Enemy, at: Vec2, now: f32) {
             gizmos.circle_2d(
                 center,
                 GUARD_SWING_RADIUS * PIXELS_PER_METER,
-                Color::srgb(1.0, 0.3, 0.2),
+                ink.apply(Color::srgb(1.0, 0.3, 0.2)),
             );
         }
     }
@@ -527,16 +552,24 @@ fn draw_enemy(gizmos: &mut Gizmos, enemy: &Enemy, at: Vec2, now: f32) {
     let head = at + Vec2::Y * (r + 14.0);
     match enemy.state {
         State::Surprised => {
-            let white = Color::WHITE;
+            let white = ink.apply(Color::WHITE);
             gizmos.line_2d(head, head + Vec2::Y * 12.0, white);
             gizmos.circle_2d(head - Vec2::Y * 5.0, 1.5, white);
         }
         // Skitters are always searching, so it isn't marked on them.
         State::Searching if enemy.kind != EnemyKind::Skitter => {
-            gizmos.circle_2d(head + Vec2::Y * 4.0, 6.0, Color::srgb(1.0, 0.6, 0.2));
+            gizmos.circle_2d(
+                head + Vec2::Y * 4.0,
+                6.0,
+                ink.apply(Color::srgb(1.0, 0.6, 0.2)),
+            );
         }
         State::Dodging => {
-            gizmos.line_2d(head - Vec2::X * 8.0, head + Vec2::X * 8.0, Color::WHITE);
+            gizmos.line_2d(
+                head - Vec2::X * 8.0,
+                head + Vec2::X * 8.0,
+                ink.apply(Color::WHITE),
+            );
         }
         State::Dizzy => {
             for k in 0..3 {
@@ -544,7 +577,7 @@ fn draw_enemy(gizmos: &mut Gizmos, enemy: &Enemy, at: Vec2, now: f32) {
                 gizmos.circle_2d(
                     head + Vec2::new(angle.cos() * 10.0, angle.sin() * 3.0),
                     2.5,
-                    Color::srgb(1.0, 0.9, 0.3),
+                    ink.apply(Color::srgb(1.0, 0.9, 0.3)),
                 );
             }
         }
@@ -555,19 +588,27 @@ fn draw_enemy(gizmos: &mut Gizmos, enemy: &Enemy, at: Vec2, now: f32) {
         let left = at + Vec2::new(-r, r + 6.0);
         let full = 2.0 * r;
         let filled = full * enemy.health / enemy.max_health;
-        gizmos.line_2d(left, left + Vec2::X * full, Color::srgb(0.3, 0.3, 0.3));
-        gizmos.line_2d(left, left + Vec2::X * filled, Color::srgb(0.9, 0.3, 0.3));
+        gizmos.line_2d(
+            left,
+            left + Vec2::X * full,
+            ink.apply(Color::srgb(0.3, 0.3, 0.3)),
+        );
+        gizmos.line_2d(
+            left,
+            left + Vec2::X * filled,
+            ink.apply(Color::srgb(0.9, 0.3, 0.3)),
+        );
     }
 }
 
 /// Wave and combo counters, drawn with line digits so no font is needed.
-fn draw_hud(gizmos: &mut Gizmos, sim: &Sim, center: Vec2, half: Vec2, z: f32) {
+fn draw_hud(gizmos: &mut Gizmos, sim: &Sim, center: Vec2, half: Vec2, z: f32, ink: Ink) {
     let top_right = center + half - Vec2::splat(24.0 * z);
     // Combo: the chain under way, in the top middle, and the best one beside it.
     let top = center + Vec2::new(0.0, half.y - 30.0 * z);
     if sim.combo.count >= 2 {
         let fade = (sim.combo.left / tarborn_sim::COMBO_WINDOW).clamp(0.3, 1.0);
-        let color = Color::srgba(1.0, 0.85, 0.3, fade);
+        let color = ink.apply(Color::srgba(1.0, 0.85, 0.3, fade));
         draw_number(gizmos, sim.combo.count, top, 18.0 * z, color);
         // The time left in the chain, as a shrinking bar.
         let width = 60.0 * z * sim.combo.left / tarborn_sim::COMBO_WINDOW;
@@ -579,7 +620,7 @@ fn draw_hud(gizmos: &mut Gizmos, sim: &Sim, center: Vec2, half: Vec2, z: f32) {
         );
     }
     if sim.combo.best >= 2 {
-        let grey = Color::srgb(0.5, 0.5, 0.5);
+        let grey = ink.apply(Color::srgb(0.5, 0.5, 0.5));
         let at = top + Vec2::new(90.0, 4.0) * z;
         draw_number(gizmos, sim.combo.best, at, 10.0 * z, grey);
     }
@@ -594,11 +635,11 @@ fn draw_hud(gizmos: &mut Gizmos, sim: &Sim, center: Vec2, half: Vec2, z: f32) {
         let done = i < arena.wave || arena.phase == Phase::Cleared;
         let current = i == arena.wave && arena.phase == Phase::Fighting;
         let color = if done {
-            Color::srgb(0.45, 0.85, 0.3)
+            ink.apply(Color::srgb(0.45, 0.85, 0.3))
         } else if current {
-            Color::srgb(1.0, 0.85, 0.3)
+            ink.apply(Color::srgb(1.0, 0.85, 0.3))
         } else {
-            Color::srgb(0.35, 0.35, 0.35)
+            ink.apply(Color::srgb(0.35, 0.35, 0.35))
         };
         let box_at = Isometry2d::from_translation(at);
         gizmos.rect_2d(box_at, Vec2::splat(12.0 * z), color);
@@ -611,12 +652,12 @@ fn draw_hud(gizmos: &mut Gizmos, sim: &Sim, center: Vec2, half: Vec2, z: f32) {
     match arena.phase {
         Phase::Break(left) if left < tarborn_sim::arena::WAVE_BREAK - 0.3 || arena.wave == 0 => {
             let pulse = 0.5 + 0.5 * (left * 6.0).sin().abs();
-            let color = Color::srgba(1.0, 0.85, 0.3, pulse);
+            let color = ink.apply(Color::srgba(1.0, 0.85, 0.3, pulse));
             draw_number(gizmos, arena.wave as u32 + 1, middle, 40.0 * z, color);
         }
         Phase::Cleared => {
             // A big tick.
-            let green = Color::srgb(0.45, 0.85, 0.3);
+            let green = ink.apply(Color::srgb(0.45, 0.85, 0.3));
             let points = [
                 Vec2::new(-40.0, 0.0),
                 Vec2::new(-10.0, -30.0),

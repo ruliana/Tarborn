@@ -23,6 +23,13 @@ pub enum EnemyKind {
     /// Keeps its distance and spits tar at you after aiming. Wide open while
     /// it recovers from a shot.
     Spitter,
+    /// Small and fast. Never caught unaware, hops out of the way of lunges
+    /// and grabs, and pounces. Slams, pogos and anything thrown still hit it.
+    Skitter,
+    /// Big and slow. Its ground slam hurts everything on the ground nearby,
+    /// friend or not, and shrinking doesn't dodge it: jump. Too heavy to grab
+    /// or knock around, and it eats grubs to heal.
+    Brute,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -53,6 +60,8 @@ pub enum State {
     /// Knocked over. Takes double damage.
     Prone,
     Fleeing,
+    /// Hopping out of the way of a lunge.
+    Dodging,
 }
 
 /// What an enemy perceives this tick. Worked out by the simulation.
@@ -63,6 +72,12 @@ pub struct Senses {
     pub sees_player: bool,
     /// The closest noise this enemy can hear, if any.
     pub heard: Option<Vec2>,
+    /// The closest other enemy it hunts and can see: grubs for skitters and
+    /// brutes, skitters for guards.
+    pub prey: Option<Vec2>,
+    /// The closest enemy nearby that it is afraid of: brutes for skitters,
+    /// brutes and skitters for grubs.
+    pub threat: Option<Vec2>,
 }
 
 /// What happened when the player hit an enemy.
@@ -155,6 +170,20 @@ impl EnemyKind {
                 run_speed: 2.5,
                 respawn: 5.0,
             },
+            EnemyKind::Skitter => Stats {
+                radius: 0.3,
+                health: 25.0,
+                walk_speed: 2.0,
+                run_speed: 7.0,
+                respawn: 5.0,
+            },
+            EnemyKind::Brute => Stats {
+                radius: 0.9,
+                health: 200.0,
+                walk_speed: 0.8,
+                run_speed: 1.4,
+                respawn: 8.0,
+            },
         }
     }
 
@@ -165,7 +194,32 @@ impl EnemyKind {
             EnemyKind::Grub => 4.0,
             EnemyKind::Guard => 8.0,
             EnemyKind::Spitter => 10.0,
+            EnemyKind::Skitter => 6.0,
+            EnemyKind::Brute => 7.0,
         }
+    }
+
+    /// Which other kinds it hunts.
+    pub fn hunts(self, other: EnemyKind) -> bool {
+        matches!(
+            (self, other),
+            (EnemyKind::Skitter | EnemyKind::Brute, EnemyKind::Grub)
+                | (EnemyKind::Guard, EnemyKind::Skitter)
+        )
+    }
+
+    /// Which other kinds it runs from.
+    pub fn fears(self, other: EnemyKind) -> bool {
+        matches!(
+            (self, other),
+            (EnemyKind::Skitter, EnemyKind::Brute)
+                | (EnemyKind::Grub, EnemyKind::Brute | EnemyKind::Skitter)
+        )
+    }
+
+    /// How much of a knockback it takes: brutes barely budge.
+    fn knockback_scale(self) -> f32 {
+        if self == EnemyKind::Brute { 0.15 } else { 1.0 }
     }
 }
 
@@ -198,6 +252,23 @@ pub const SPIT_AIM: f32 = 0.6;
 const SPIT_RECOVER: f32 = 0.8;
 /// A spitter backs away from a player closer than this.
 const SPIT_COMFORT: f32 = 3.0;
+/// A skitter pounces from this far.
+pub const SKITTER_REACH: f32 = 2.5;
+pub const SKITTER_WINDUP: f32 = 0.25;
+pub const SKITTER_POUNCE: f32 = 0.3;
+pub const SKITTER_RECOVER: f32 = 0.6;
+const SKITTER_DODGE_TIME: f32 = 0.4;
+/// Something it fears this close sends it running.
+pub(crate) const FEAR_DISTANCE: f32 = 4.0;
+/// A brute starts its slam with the target this close.
+pub const BRUTE_REACH: f32 = 2.2;
+pub const BRUTE_WINDUP: f32 = 0.9;
+pub const BRUTE_STRIKE: f32 = 0.1;
+pub const BRUTE_RECOVER: f32 = 1.0;
+/// Everything on the ground this close to a brute's slam gets hit.
+pub const BRUTE_SLAM_RADIUS: f32 = 3.0;
+/// Health a brute gets back from eating a grub.
+pub const BRUTE_MEAL: f32 = 40.0;
 const BACK_OFF_TIME: f32 = 1.2;
 /// An unaware spitter looks the other way this often.
 const LOOK_AROUND: f32 = 2.5;
@@ -207,7 +278,12 @@ impl Enemy {
         let stats = kind.stats();
         Self {
             kind,
-            state: State::Unaware,
+            // Skitters are never caught unaware.
+            state: if kind == EnemyKind::Skitter {
+                State::Searching
+            } else {
+                State::Unaware
+            },
             state_time: 0.0,
             facing: 1.0,
             position,
@@ -247,6 +323,14 @@ impl Enemy {
         Self::new(EnemyKind::Guard, position)
     }
 
+    pub fn skitter(position: Vec2) -> Self {
+        Self::new(EnemyKind::Skitter, position)
+    }
+
+    pub fn brute(position: Vec2) -> Self {
+        Self::new(EnemyKind::Brute, position)
+    }
+
     pub fn alive(&self) -> bool {
         self.respawn_left.is_none()
     }
@@ -259,12 +343,52 @@ impl Enemy {
             State::Defending | State::Attacking(AttackPhase::Windup)
         );
         let from_front = direction.x * self.facing < -0.2;
-        !(self.kind == EnemyKind::Guard && shield_up && from_front)
+        let guarded = self.kind == EnemyKind::Guard && shield_up && from_front;
+        !guarded && self.kind != EnemyKind::Brute
     }
 
-    /// True while the guard's swing can hurt.
+    /// True while the attack can hurt.
     pub fn striking(&self) -> bool {
         self.state == State::Attacking(AttackPhase::Strike)
+    }
+
+    /// A skitter hops out of the way of lunges and grabs, unless it is stunned
+    /// or committed to its own pounce.
+    pub fn can_evade(&self) -> bool {
+        self.kind == EnemyKind::Skitter
+            && self.alive()
+            && !self.held
+            && !self.thrown
+            && !matches!(
+                self.state,
+                State::Dizzy
+                    | State::Prone
+                    | State::Dodging
+                    | State::Attacking(AttackPhase::Strike | AttackPhase::Recover)
+            )
+    }
+
+    /// Hops up and away from something coming from `from`.
+    pub fn evade(&mut self, from: Vec2) {
+        let away = if self.position.x >= from.x { 1.0 } else { -1.0 };
+        self.velocity = Vec2::new(away * 5.0, 8.0);
+        self.target = Some(from);
+        self.face(from);
+        self.set_state(State::Dodging);
+        self.hit_cooldown = SKITTER_DODGE_TIME;
+    }
+
+    /// Dies on the spot, with no hit (eaten).
+    pub fn die(&mut self) {
+        self.health = 0.0;
+        self.held = false;
+        self.thrown = false;
+        self.respawn_left = Some(self.kind.stats().respawn);
+    }
+
+    /// Eats a grub: heals, and keeps its place.
+    pub fn eat(&mut self) {
+        self.health = (self.health + BRUTE_MEAL).min(self.max_health);
     }
 
     fn set_state(&mut self, state: State) {
@@ -337,11 +461,28 @@ impl Enemy {
                 _ if from_above => (1.0, State::Dizzy),
                 _ => (1.0, State::Fleeing),
             },
+            // Never unaware, so no surprise bonus. Area hits knock it silly.
+            EnemyKind::Skitter => match self.state {
+                State::Attacking(AttackPhase::Recover) => (2.0, State::Dizzy),
+                State::Dizzy | State::Prone => (2.0, State::Dizzy),
+                _ if heavy => (1.0, State::Dizzy),
+                _ => (1.0, State::Fleeing),
+            },
+            // The wind-up can't be interrupted: it just takes the hit.
+            EnemyKind::Brute => match self.state {
+                State::Unaware => (3.0, State::Searching),
+                State::Attacking(AttackPhase::Windup | AttackPhase::Strike) => (1.0, self.state),
+                State::Attacking(AttackPhase::Recover) if from_above => (2.0, State::Prone),
+                State::Attacking(AttackPhase::Recover) => (2.0, self.state),
+                State::Dizzy | State::Prone => (2.0, self.state),
+                _ if from_above => (1.0, State::Dizzy),
+                _ => (1.0, State::Searching),
+            },
         };
 
         let damage = damage * multiplier;
         self.health -= damage;
-        self.velocity = knockback;
+        self.velocity = knockback * self.kind.knockback_scale();
         if self.health <= 0.0 {
             self.health = 0.0;
             self.respawn_left = Some(self.kind.stats().respawn);
@@ -353,7 +494,8 @@ impl Enemy {
         // Being hit always tells it where you are.
         self.target = Some(self.position - direction);
         self.unseen_for = 0.0;
-        if next != self.state || matches!(next, State::Dizzy | State::Prone) {
+        let committed = matches!(self.state, State::Attacking(_)) && next == self.state;
+        if !committed && (next != self.state || matches!(next, State::Dizzy | State::Prone)) {
             self.face(self.position - direction);
             self.state = next;
             self.state_time = 0.0;
@@ -382,6 +524,10 @@ impl Enemy {
         if senses.sees_player {
             self.target = Some(senses.player);
             self.unseen_for = 0.0;
+        } else if let Some(prey) = senses.prey {
+            // Hunting another enemy counts as seeing a target.
+            self.target = Some(prey);
+            self.unseen_for = 0.0;
         } else {
             self.unseen_for += dt;
         }
@@ -391,6 +537,8 @@ impl Enemy {
             EnemyKind::Grub => self.think_grub(senses),
             EnemyKind::Guard => self.think_guard(senses, dt),
             EnemyKind::Spitter => self.think_spitter(senses),
+            EnemyKind::Skitter => self.think_skitter(senses),
+            EnemyKind::Brute => self.think_brute(senses),
         }
         // Don't walk off ledges or into walls.
         if self.walk != 0.0 && !self.can_walk(level, self.walk.signum()) {
@@ -404,6 +552,13 @@ impl Enemy {
     fn think_grub(&mut self, senses: Senses) {
         let stats = self.kind.stats();
         let near = senses.player.distance(self.position) < 2.5;
+        if let Some(threat) = senses.threat
+            && matches!(self.state, State::Unaware | State::Fleeing)
+        {
+            self.target = Some(threat);
+            self.unseen_for = 0.0;
+            self.set_state(State::Fleeing);
+        }
         match self.state {
             State::Unaware => {
                 self.patrol(stats.walk_speed, 2.0);
@@ -448,6 +603,9 @@ impl Enemy {
                     } else {
                         State::Defending
                     });
+                } else if senses.prey.is_some() {
+                    // Guards attack skitters on sight.
+                    self.set_state(State::Defending);
                 } else if let Some(noise) = senses.heard {
                     self.target = Some(noise);
                     self.set_state(State::Suspicious);
@@ -479,7 +637,8 @@ impl Enemy {
                 if let Some(target) = self.target {
                     self.turn_slowly(target, dt);
                     let gap = (target - self.position).length();
-                    if senses.sees_player && gap < GUARD_REACH {
+                    let sees = senses.sees_player || senses.prey.is_some();
+                    if sees && gap < GUARD_REACH {
                         self.set_state(State::Attacking(AttackPhase::Windup));
                     } else if gap > GUARD_REACH * 0.8 {
                         self.walk = self.facing * stats.run_speed;
@@ -620,6 +779,137 @@ impl Enemy {
         }
     }
 
+    fn think_skitter(&mut self, senses: Senses) {
+        let stats = self.kind.stats();
+        let t = self.state_time;
+        if let Some(threat) = senses.threat
+            && !matches!(
+                self.state,
+                State::Dizzy | State::Prone | State::Dodging | State::Attacking(_)
+            )
+        {
+            self.target = Some(threat);
+            self.set_state(State::Fleeing);
+        }
+        let sees = senses.sees_player || senses.prey.is_some();
+        match self.state {
+            // Skitters start out roaming, already alert.
+            State::Unaware | State::Searching => {
+                if sees && let Some(target) = self.target {
+                    self.face(target);
+                    if (target - self.position).length() < SKITTER_REACH {
+                        self.set_state(State::Attacking(AttackPhase::Windup));
+                    } else {
+                        self.walk = self.facing * stats.run_speed;
+                    }
+                } else if let Some(target) = self.target.or(senses.heard) {
+                    if (target.x - self.position.x).abs() > 0.5 {
+                        self.face(target);
+                        self.walk = self.facing * stats.walk_speed * 1.5;
+                    } else {
+                        self.target = None;
+                    }
+                } else {
+                    self.patrol(stats.walk_speed, PATROL_RANGE);
+                }
+            }
+            State::Attacking(AttackPhase::Windup) => {
+                if let Some(target) = self.target {
+                    self.face(target);
+                }
+                if t > SKITTER_WINDUP {
+                    let target = self.target.unwrap_or(self.position);
+                    let offset = target - self.position;
+                    // A long, flat leap: it overshoots a target that holds still.
+                    self.velocity = Vec2::new(self.facing * 13.0, 4.0 + offset.y.max(0.0) * 3.0);
+                    self.set_state(State::Attacking(AttackPhase::Strike));
+                }
+            }
+            State::Attacking(AttackPhase::Strike) if t > SKITTER_POUNCE => {
+                self.set_state(State::Attacking(AttackPhase::Recover));
+            }
+            State::Attacking(AttackPhase::Recover) if t > SKITTER_RECOVER => {
+                self.set_state(State::Searching);
+            }
+            // Lands from the hop and comes right back at you.
+            State::Dodging if t > SKITTER_DODGE_TIME && self.on_ground => {
+                self.set_state(if sees {
+                    State::Attacking(AttackPhase::Windup)
+                } else {
+                    State::Searching
+                });
+            }
+            State::Dizzy if t > DIZZY_TIME => self.set_state(State::Searching),
+            State::Prone if t > PRONE_TIME => self.set_state(State::Searching),
+            State::Fleeing => {
+                if let Some(threat) = self.target {
+                    self.facing = if self.position.x >= threat.x {
+                        1.0
+                    } else {
+                        -1.0
+                    };
+                }
+                self.walk = self.facing * stats.run_speed;
+                if senses.threat.is_none() && t > 1.0 {
+                    self.target = None;
+                    self.set_state(State::Searching);
+                }
+            }
+            _ => {}
+        }
+    }
+
+    fn think_brute(&mut self, senses: Senses) {
+        let stats = self.kind.stats();
+        let t = self.state_time;
+        let sees = senses.sees_player || senses.prey.is_some();
+        match self.state {
+            State::Unaware => {
+                self.patrol(stats.walk_speed, PATROL_RANGE);
+                if sees {
+                    self.set_state(State::Searching);
+                } else if let Some(noise) = senses.heard {
+                    self.target = Some(noise);
+                    self.set_state(State::Searching);
+                }
+            }
+            // Lumbering toward whatever it is after.
+            State::Searching => {
+                if let Some(target) = self.target {
+                    self.face(target);
+                    let gap = (target - self.position).length();
+                    let hunting_player = senses.sees_player;
+                    if hunting_player && gap < BRUTE_REACH && self.on_ground {
+                        self.set_state(State::Attacking(AttackPhase::Windup));
+                    } else if (target.x - self.position.x).abs() > 0.3 {
+                        let speed = if sees {
+                            stats.run_speed
+                        } else {
+                            stats.walk_speed
+                        };
+                        self.walk = self.facing * speed;
+                    }
+                }
+                if self.unseen_for > SEARCH_TIME {
+                    self.target = None;
+                    self.set_state(State::Unaware);
+                }
+            }
+            State::Attacking(AttackPhase::Windup) if t > BRUTE_WINDUP => {
+                self.set_state(State::Attacking(AttackPhase::Strike));
+            }
+            State::Attacking(AttackPhase::Strike) if t > BRUTE_STRIKE => {
+                self.set_state(State::Attacking(AttackPhase::Recover));
+            }
+            State::Attacking(AttackPhase::Recover) if t > BRUTE_RECOVER => {
+                self.set_state(State::Searching);
+            }
+            State::Dizzy if t > DIZZY_TIME => self.set_state(State::Searching),
+            State::Prone if t > PRONE_TIME => self.set_state(State::Dizzy),
+            _ => {}
+        }
+    }
+
     /// Turns to face `point`, but only once it has been behind for a moment.
     fn turn_slowly(&mut self, point: Vec2, dt: f32) {
         let behind = (point.x - self.position.x) * self.facing < -0.05;
@@ -673,7 +963,7 @@ impl Enemy {
         }
         let can_move = !matches!(
             self.state,
-            State::Surprised | State::Dizzy | State::Prone | State::Attacking(_)
+            State::Surprised | State::Dizzy | State::Prone | State::Attacking(_) | State::Dodging
         );
         if self.thrown {
             // A thrown body slides freely until it slows down or hits something.

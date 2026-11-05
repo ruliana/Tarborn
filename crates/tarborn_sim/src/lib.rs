@@ -79,7 +79,8 @@ impl Sim {
         }
     }
 
-    /// The test room with a dummy, grubs, guards, a spitter and spikes.
+    /// The test room with a dummy, grubs, guards, a spitter, a skitter, a brute
+    /// and spikes.
     pub fn training_room(spawn: Vec2) -> Self {
         let v = Vec2::new;
         let mut sim = Self::new(Level::test_room(), spawn);
@@ -90,6 +91,8 @@ impl Sim {
             Enemy::guard(v(16.0, 4.6)),
             Enemy::grub(v(2.5, 0.35)),
             Enemy::spitter(v(-10.5, 5.95)),
+            Enemy::skitter(v(-13.0, 0.3)),
+            Enemy::brute(v(18.5, 4.9)),
         ];
         sim.hazards = vec![Solid::rect(v(-19.0, 0.0), v(-15.0, 0.3))];
         sim

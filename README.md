@@ -78,7 +78,8 @@ The blob flashes white while invulnerable.
 ### Combat
 
 The test room has a training dummy (grey circle with a cross), grubs (small
-purple circles), guards (blue rectangles), a spitter (orange diamond) and a
+purple circles), guards (blue rectangles), a spitter (orange diamond), a
+skitter (yellow triangle), a brute (big red square, on the plateau) and a
 strip of spikes.
 
 - Your body is the weapon. A lunge hits for a fixed amount (more from a
@@ -120,7 +121,8 @@ its head show it.
 | Attacking  | flashing red, then swing circle or shot | Wind-up, then the attack. Open afterwards. Shrinking dodges it. |
 | Dizzy      | orbiting dots, grey   | Double damage. Caused by slams, pogos, shockwaves.      |
 | Prone      | flattened, grey       | Double damage.                                          |
-| Fleeing    | green                 | Grub only: running away.                                |
+| Fleeing    | green                 | Running away from you or from something it fears.       |
+| Dodging    | white dash            | Skitter only: hopping out of the way of a lunge.        |
 
 - **Sight**: enemies see in front of them, not through walls. Guards see
   8 m, grubs 4 m. Spotting you within 3 m startles them.
@@ -134,6 +136,25 @@ its head show it.
 - **Spitter** (orange diamond): keeps its distance, aims for 0.6 s (a line
   grows toward you), then spits a glob that flies straight. It backs away if
   you get within 3 m, and takes double damage while recovering from a shot.
+- **Skitter** (yellow triangle): fast and never caught unaware. It hops out
+  of the way of any lunge or grab, then comes straight back with a pounce
+  that shrinking doesn't dodge. Beat it with what it can't hop away from: a
+  slam or its shockwave, landing on it with Jump held, something thrown at
+  it, or a lunge while it recovers from a pounce (double damage).
+- **Brute** (big red square): slow, with 200 health. It rises up for 0.9 s,
+  then slams the ground, hurting everything on the ground within 3 m,
+  friend or not. Shrinking doesn't dodge the slam: be in the air. It can't
+  be grabbed, barely moves when hit, and shrugs off hits during its wind-up.
+  It takes double damage while recovering, and a slam then knocks it prone.
 - **Shrink to dodge**: while Grip is held, spit and guard swings pass you by.
   The combo is to shrink under the attack, then press Jump to burst into the
   enemy while it recovers.
+
+### How enemies treat each other
+
+- Skitters hunt grubs and run from brutes.
+- Guards attack skitters on sight.
+- Brutes walk over to grubs they see and eat them, healing 40.
+- Grubs run from skitters and brutes.
+- Every attack hurts whatever it hits: spit, swings, pounces, the brute's
+  slam and thrown bodies.

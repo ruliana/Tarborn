@@ -3,11 +3,12 @@
 
 use bevy::app::RunFixedMainLoopSystems;
 use bevy::prelude::*;
-use tarborn_sim::{Intent, Level, Sim, TICKS_PER_SECOND, TarModes};
+use tarborn_sim::{DT, Intent, Sim, TICKS_PER_SECOND, TarModes};
 
 const PIXELS_PER_METER: f32 = 48.0;
 const SPAWN: Vec2 = Vec2::new(0.0, 2.0);
 const STICK_DEADZONE: f32 = 0.2;
+const RESTART_DELAY: f32 = 1.0;
 
 fn main() {
     App::new()
@@ -39,15 +40,26 @@ struct Game {
     sim: Sim,
     /// Blob points before the latest tick, for interpolating between ticks.
     previous: Vec<Vec2>,
+    /// Enemy positions before the latest tick.
+    previous_enemies: Vec<Vec2>,
+    /// Seconds since the player died; the room restarts after a moment.
+    dead_for: f32,
 }
 
 impl Game {
     fn new() -> Self {
-        let sim = Sim::new(Level::test_room(), SPAWN);
+        let sim = Sim::training_room(SPAWN);
         Self {
             previous: sim.blob.positions.clone(),
+            previous_enemies: sim.enemies.iter().map(|e| e.position).collect(),
+            dead_for: 0.0,
             sim,
         }
+    }
+
+    fn enemy_position(&self, index: usize, alpha: f32) -> Vec2 {
+        self.previous_enemies[index].lerp(self.sim.enemies[index].position, alpha)
+            * PIXELS_PER_METER
     }
 
     /// Blob outline in world pixels, interpolated `alpha` of the way from the
@@ -158,7 +170,17 @@ fn tick(mut game: ResMut<Game>, mut latch: ResMut<InputLatch>) {
     latch.jump_pressed = false;
     latch.lunge_pressed = false;
     let game = &mut *game;
+    if game.sim.dead {
+        game.dead_for += DT;
+        if game.dead_for > RESTART_DELAY {
+            *game = Game::new();
+        }
+        return;
+    }
     game.previous.clone_from(&game.sim.blob.positions);
+    game.previous_enemies.clear();
+    game.previous_enemies
+        .extend(game.sim.enemies.iter().map(|e| e.position));
     game.sim.step(intent);
 }
 
@@ -175,7 +197,17 @@ fn follow_camera(
     camera.translation = camera.translation.lerp(target, smoothing);
 }
 
-fn draw(game: Res<Game>, latch: Res<InputLatch>, fixed: Res<Time<Fixed>>, mut gizmos: Gizmos) {
+fn draw(
+    game: Res<Game>,
+    latch: Res<InputLatch>,
+    fixed: Res<Time<Fixed>>,
+    time: Res<Time>,
+    camera: Single<&Transform, With<Camera2d>>,
+    window: Single<&Window>,
+    mut gizmos: Gizmos,
+) {
+    let alpha = fixed.overstep_fraction();
+    let sim = &game.sim;
     let ground = Color::srgb(0.55, 0.5, 0.45);
     for solid in &game.sim.level.solids {
         let first = solid.vertices[0];
@@ -189,9 +221,85 @@ fn draw(game: Res<Game>, latch: Res<InputLatch>, fixed: Res<Time<Fixed>>, mut gi
         );
     }
 
+    // Spikes: a zigzag along the top of each hazard.
+    let spike = Color::srgb(0.95, 0.25, 0.25);
+    for hazard in &sim.hazards {
+        let (min, max) = hazard
+            .vertices
+            .iter()
+            .fold((Vec2::MAX, Vec2::MIN), |(lo, hi), v| {
+                (lo.min(*v), hi.max(*v))
+            });
+        let teeth = ((max.x - min.x) / 0.3).ceil().max(1.0) as usize;
+        let width = (max.x - min.x) / teeth as f32;
+        let points = (0..=teeth * 2).map(|i| {
+            let x = min.x + width * i as f32 * 0.5;
+            let y = if i % 2 == 1 { max.y } else { min.y };
+            Vec2::new(x, y) * PIXELS_PER_METER
+        });
+        gizmos.linestrip_2d(points, spike);
+    }
+
+    // Tar drops that heal.
+    for pickup in &sim.pickups {
+        gizmos.circle_2d(
+            *pickup * PIXELS_PER_METER,
+            0.2 * PIXELS_PER_METER,
+            Color::srgb(0.95, 0.75, 0.3),
+        );
+    }
+
+    // Enemies: a circle with a cross, and a health bar above while hurt.
+    for (i, enemy) in sim.enemies.iter().enumerate() {
+        if !enemy.alive() {
+            continue;
+        }
+        let at = game.enemy_position(i, alpha);
+        let r = enemy.radius * PIXELS_PER_METER;
+        let flash = enemy.hit_cooldown > 0.0;
+        let color = if flash {
+            Color::WHITE
+        } else {
+            Color::srgb(0.75, 0.55, 0.85)
+        };
+        gizmos.circle_2d(at, r, color);
+        gizmos.line_2d(at - Vec2::X * r * 0.5, at + Vec2::X * r * 0.5, color);
+        gizmos.line_2d(at - Vec2::Y * r * 0.5, at + Vec2::Y * r * 0.5, color);
+        if enemy.health < enemy.max_health {
+            let left = at + Vec2::new(-r, r + 8.0);
+            let full = 2.0 * r;
+            let filled = full * enemy.health / enemy.max_health;
+            gizmos.line_2d(left, left + Vec2::X * full, Color::srgb(0.3, 0.3, 0.3));
+            gizmos.line_2d(left, left + Vec2::X * filled, Color::srgb(0.9, 0.3, 0.3));
+        }
+    }
+
+    // Health pips in the top-left corner of the screen.
+    let corner = camera.translation.truncate()
+        + Vec2::new(-window.width() * 0.5 + 24.0, window.height() * 0.5 - 24.0);
+    for i in 0..sim.max_health {
+        let at = corner + Vec2::X * (i as f32 * 22.0);
+        let color = if i < sim.health {
+            Color::srgb(0.95, 0.75, 0.3)
+        } else {
+            Color::srgb(0.3, 0.3, 0.3)
+        };
+        gizmos.circle_2d(at, 8.0, color);
+    }
+
     let modes = latch.modes;
-    let tar = if game.sim.controller.invulnerable() {
+    // Blink while invulnerable after being hurt; white while lunging.
+    let blink = ((time.elapsed_secs() * 16.0) as u32).is_multiple_of(2);
+    let tar = if sim.dead {
+        Color::srgb(0.4, 0.4, 0.4)
+    } else if sim.controller.invulnerable() {
         Color::WHITE
+    } else if sim.controller.is_coiling() {
+        // Green deepening to red as the coil charges.
+        let k = sim.controller.coil_power();
+        Color::srgb(0.45 + 0.5 * k, 0.85 - 0.6 * k, 0.3)
+    } else if sim.player_invulnerable() && blink {
+        Color::srgb(0.95, 0.3, 0.3)
     } else if modes.sticky {
         Color::srgb(0.45, 0.85, 0.3)
     } else if modes.bouncy {
@@ -199,7 +307,7 @@ fn draw(game: Res<Game>, latch: Res<InputLatch>, fixed: Res<Time<Fixed>>, mut gi
     } else {
         Color::srgb(0.95, 0.75, 0.3)
     };
-    let outline = game.blob_outline(fixed.overstep_fraction());
+    let outline = game.blob_outline(alpha);
     gizmos.linestrip_2d(
         outline.iter().copied().chain(std::iter::once(outline[0])),
         tar,

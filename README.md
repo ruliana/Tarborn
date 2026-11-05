@@ -48,10 +48,27 @@ sudo apt install libasound2-dev libudev-dev libwayland-dev libxkbcommon-dev pkg-
   by touching any surface. Jumping cancels it and keeps its speed.
 - **Slam** is a lunge aimed down while in the air: straight down, hard.
 - **Sticky** clings to walls and ceilings; roll to crawl along them.
+- **Coil**: while sticky and touching a surface, holding jump shrinks the
+  blob instead of jumping. Release to launch off the surface: the longer the
+  hold, the faster (up to 2x a jump at 0.6 s). Aim away from the surface to
+  choose the direction. Plain jumps without sticky are still instant.
 - **Bouncy** is springy and nearly frictionless: you rebound off whatever you
   hit. Slam with bouncy held to launch yourself high.
 
 The blob flashes white while invulnerable.
+
+### Combat
+
+The test room has training dummies (purple circles) and a strip of spikes.
+
+- Your body is the weapon. A lunge always hits for a fixed amount, a slam
+  hits whatever it lands on and sends out a shockwave, landing on an enemy
+  with bouncy held pogoes off it, and hitting anything at high speed hurts it.
+- Every hit freezes the world for a moment, knocks the target back, and
+  refreshes your lunge, so hits chain in the air. Lunges snap toward an enemy
+  within 30° of where you aim.
+- You have 5 health. Getting hurt costs one and makes you blink, invulnerable
+  for a second. Kills drop tar (yellow) that heals one. At 0 the room restarts.
 
 ## How responsiveness is handled
 

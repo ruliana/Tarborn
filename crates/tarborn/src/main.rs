@@ -294,6 +294,10 @@ fn draw(
         Color::srgb(0.4, 0.4, 0.4)
     } else if sim.controller.invulnerable() {
         Color::WHITE
+    } else if sim.controller.is_coiling() {
+        // Green deepening to red as the coil charges.
+        let k = sim.controller.coil_power();
+        Color::srgb(0.45 + 0.5 * k, 0.85 - 0.6 * k, 0.3)
     } else if sim.player_invulnerable() && blink {
         Color::srgb(0.95, 0.3, 0.3)
     } else if modes.sticky {

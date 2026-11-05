@@ -8,6 +8,10 @@
 //!   dodge and the attack in one, and the blob is invulnerable during it. One
 //!   lunge in the air, refilled by touching any surface or by
 //!   [`Controller::refresh_lunge`] (hitting an enemy).
+//! - **Coil**: while sticky and anchored to a surface, holding jump shrinks
+//!   the blob instead of jumping; releasing launches it off the surface,
+//!   faster the longer it was held, in the aimed direction if the stick
+//!   points away from the surface.
 //! - **Slam**: lunge aimed down while airborne. Drives straight down until it
 //!   lands. With bouncy held, the landing rebounds high.
 
@@ -54,6 +58,12 @@ pub struct FeelParams {
     /// Aim more downward than this (aim.y below -this) makes an air lunge a slam.
     pub slam_aim: f32,
     pub slam_speed: f32,
+    /// Holding a coil this long reaches full power.
+    pub coil_time: f32,
+    /// Launch speed at full coil, as a multiple of `jump_speed`.
+    pub coil_max_power: f32,
+    /// How small the blob gets at full coil.
+    pub coil_min_scale: f32,
     /// A lunge snaps toward a target within this distance...
     pub aim_assist_range: f32,
     /// ...and within this angle (radians) of where it was aimed.
@@ -74,6 +84,9 @@ impl Default for FeelParams {
             lunge_buffer: 0.12,
             slam_aim: 0.5,
             slam_speed: 24.0,
+            coil_time: 0.6,
+            coil_max_power: 2.0,
+            coil_min_scale: 0.6,
             aim_assist_range: 5.0,
             aim_assist_angle: 30f32.to_radians(),
         }
@@ -95,6 +108,8 @@ pub struct Controller {
     lunge_cooldown_left: f32,
     air_lunge_ready: bool,
     slamming: bool,
+    /// Seconds spent coiling, while coiling.
+    coil: Option<f32>,
 }
 
 impl Default for Controller {
@@ -113,6 +128,12 @@ pub enum Event {
         direction: Vec2,
     },
     SlamStarted,
+    CoilStarted,
+    /// A coil was released. `power` is 0 for a tap, 1 for a full coil.
+    Launched {
+        direction: Vec2,
+        power: f32,
+    },
     /// A slam hit the ground at `at` going `speed` metres per second.
     Slammed {
         at: Vec2,
@@ -171,11 +192,22 @@ impl Controller {
             lunge_cooldown_left: 0.0,
             air_lunge_ready: true,
             slamming: false,
+            coil: None,
         }
     }
 
     pub fn is_lunging(&self) -> bool {
         self.lunge_left > 0.0
+    }
+
+    pub fn is_coiling(&self) -> bool {
+        self.coil.is_some()
+    }
+
+    /// 0 when not coiling or just started, 1 at full power.
+    pub fn coil_power(&self) -> f32 {
+        self.coil
+            .map_or(0.0, |t| (t / self.params.coil_time).min(1.0))
     }
 
     pub fn is_slamming(&self) -> bool {
@@ -279,8 +311,33 @@ impl Controller {
             }
         }
 
+        // Coil: anchored by sticky, a held jump shrinks instead of jumping.
+        let anchored = intent.modes.sticky && blob.touching_count() > 0;
+        if let Some(t) = self.coil {
+            if !intent.modes.sticky || !anchored && self.coyote_left <= 0.0 {
+                self.coil = None;
+                blob.scale = 1.0;
+            } else if intent.jump_held {
+                self.coil = Some(t + dt);
+                let k = self.coil_power();
+                blob.scale = 1.0 + (self.params.coil_min_scale - 1.0) * k;
+            } else {
+                self.release_coil(blob, intent.aim, &mut events);
+            }
+        } else if self.buffer_left > 0.0
+            && anchored
+            && intent.jump_held
+            && !self.slamming
+            && !self.is_lunging()
+        {
+            self.buffer_left = 0.0;
+            self.coil = Some(0.0);
+            events.push(Event::CoilStarted);
+        }
+
         // Jump. It cancels a lunge, keeping the lunge's momentum.
-        if self.buffer_left > 0.0 && self.coyote_left > 0.0 && !self.slamming {
+        if self.buffer_left > 0.0 && self.coyote_left > 0.0 && !self.slamming && self.coil.is_none()
+        {
             // Jump away from the surface, biased upward so wall jumps arc.
             let direction = (self.last_support + Vec2::Y).normalize_or(Vec2::Y);
             if self.is_lunging() {
@@ -353,6 +410,26 @@ impl Controller {
             .filter(|(_, n)| !touching || n.y >= -0.05)
             .min_by(|a, b| a.0.total_cmp(&b.0))
             .map_or(direction, |(_, n)| n)
+    }
+
+    fn release_coil(&mut self, blob: &mut Blob, aim: Vec2, events: &mut Vec<Event>) {
+        let power = self.coil_power();
+        self.coil = None;
+        blob.scale = 1.0;
+        let normal = self.last_support;
+        // Aim away from the surface to pick the direction; otherwise leap
+        // off it, arcing upward from walls.
+        let direction = match aim.try_normalize() {
+            Some(a) if a.dot(normal) > 0.2 => a,
+            _ => (normal + Vec2::Y * 0.5).normalize_or(normal),
+        };
+        let speed = self.params.jump_speed * (1.0 + (self.params.coil_max_power - 1.0) * power);
+        blob.set_velocity(direction * speed);
+        blob.unstick();
+        self.buffer_left = 0.0;
+        self.coyote_left = 0.0;
+        self.rising = false;
+        events.push(Event::Launched { direction, power });
     }
 
     fn end_lunge(&mut self, blob: &mut Blob, keep: f32) {

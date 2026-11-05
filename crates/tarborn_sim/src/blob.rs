@@ -100,6 +100,8 @@ pub struct Blob {
     pub contacts: Vec<Option<Vec2>>,
     /// Multiplies gravity. The controller turns it off during a lunge.
     pub gravity_scale: f32,
+    /// Size of the rest shape, 1 is normal. Below 1 the blob shrinks (coils).
+    pub scale: f32,
     rest_offsets: Vec<Vec2>,
     rest_edge: f32,
     rest_area: f32,
@@ -126,6 +128,7 @@ impl Blob {
             velocities: vec![Vec2::ZERO; n],
             contacts: vec![None; n],
             gravity_scale: 1.0,
+            scale: 1.0,
             rest_offsets,
             rest_edge,
             rest_area,
@@ -270,25 +273,22 @@ impl Blob {
             friction,
         };
         self.contacts.fill(None);
+        let scale = self.scale;
+        let offsets: Vec<Vec2> = self.rest_offsets.iter().map(|o| *o * scale).collect();
         for _ in 0..p.solver_iterations.max(1) {
             solve_edges(
                 &mut self.scratch,
                 &self.inv_mass,
-                self.rest_edge,
+                self.rest_edge * scale,
                 p.edge_stiffness,
             );
             solve_area(
                 &mut self.scratch,
                 &self.inv_mass,
-                self.rest_area,
+                self.rest_area * scale * scale,
                 p.area_stiffness,
             );
-            solve_shape(
-                &mut self.scratch,
-                &self.inv_mass,
-                &self.rest_offsets,
-                shape_k,
-            );
+            solve_shape(&mut self.scratch, &self.inv_mass, &offsets, shape_k);
             surface.solve(
                 &mut self.scratch,
                 &self.positions,

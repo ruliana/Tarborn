@@ -48,6 +48,10 @@ sudo apt install libasound2-dev libudev-dev libwayland-dev libxkbcommon-dev pkg-
   by touching any surface. Jumping cancels it and keeps its speed.
 - **Slam** is a lunge aimed down while in the air: straight down, hard.
 - **Sticky** clings to walls and ceilings; roll to crawl along them.
+- **Coil**: while sticky and touching a surface, holding jump shrinks the
+  blob instead of jumping. Release to launch off the surface: the longer the
+  hold, the faster (up to 2x a jump at 0.6 s). Aim away from the surface to
+  choose the direction. Plain jumps without sticky are still instant.
 - **Bouncy** is springy and nearly frictionless: you rebound off whatever you
   hit. Slam with bouncy held to launch yourself high.
 

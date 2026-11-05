@@ -66,8 +66,10 @@ impl Game {
 #[derive(Resource, Default)]
 struct InputLatch {
     roll: f32,
+    aim: Vec2,
     jump_pressed: bool,
     jump_held: bool,
+    lunge_pressed: bool,
     modes: TarModes,
 }
 
@@ -85,45 +87,58 @@ fn read_input(
     mut game: ResMut<Game>,
 ) {
     let any_key = |codes: &[KeyCode]| keys.any_pressed(codes.iter().copied());
-    let mut roll = 0.0;
+    let mut aim = Vec2::ZERO;
     if any_key(&[KeyCode::ArrowLeft, KeyCode::KeyA]) {
-        roll -= 1.0;
+        aim.x -= 1.0;
     }
     if any_key(&[KeyCode::ArrowRight, KeyCode::KeyD]) {
-        roll += 1.0;
+        aim.x += 1.0;
     }
-    let jump_keys = [KeyCode::Space, KeyCode::ArrowUp, KeyCode::KeyW];
+    if any_key(&[KeyCode::ArrowUp, KeyCode::KeyW]) {
+        aim.y += 1.0;
+    }
+    if any_key(&[KeyCode::ArrowDown, KeyCode::KeyS]) {
+        aim.y -= 1.0;
+    }
+    let jump_keys = [KeyCode::Space];
     let mut jump_pressed = keys.any_just_pressed(jump_keys);
     let mut jump_held = keys.any_pressed(jump_keys);
+    let mut lunge_pressed = keys.any_just_pressed([KeyCode::KeyJ, KeyCode::KeyX]);
     let mut modes = TarModes {
-        sticky: any_key(&[KeyCode::KeyJ, KeyCode::ShiftLeft]),
-        slick: any_key(&[KeyCode::KeyK]),
-        heavy: any_key(&[KeyCode::KeyL, KeyCode::ArrowDown, KeyCode::KeyS]),
+        sticky: any_key(&[KeyCode::KeyK, KeyCode::ShiftLeft]),
+        bouncy: any_key(&[KeyCode::KeyL]),
     };
 
     for pad in &gamepads {
-        let stick = pad.left_stick().x;
-        if stick.abs() > STICK_DEADZONE {
-            roll += stick;
+        let stick = pad.left_stick();
+        if stick.length() > STICK_DEADZONE {
+            aim += stick;
         }
-        if pad.pressed(GamepadButton::DPadLeft) {
-            roll -= 1.0;
-        }
-        if pad.pressed(GamepadButton::DPadRight) {
-            roll += 1.0;
+        for (button, dir) in [
+            (GamepadButton::DPadLeft, Vec2::NEG_X),
+            (GamepadButton::DPadRight, Vec2::X),
+            (GamepadButton::DPadUp, Vec2::Y),
+            (GamepadButton::DPadDown, Vec2::NEG_Y),
+        ] {
+            if pad.pressed(button) {
+                aim += dir;
+            }
         }
         jump_pressed |= pad.just_pressed(GamepadButton::South);
         jump_held |= pad.pressed(GamepadButton::South);
+        lunge_pressed |= pad.just_pressed(GamepadButton::West);
         modes.sticky |=
             pad.pressed(GamepadButton::RightTrigger2) || pad.pressed(GamepadButton::RightTrigger);
-        modes.slick |=
+        modes.bouncy |=
             pad.pressed(GamepadButton::LeftTrigger2) || pad.pressed(GamepadButton::LeftTrigger);
-        modes.heavy |= pad.pressed(GamepadButton::West);
     }
 
-    latch.roll = roll.clamp(-1.0, 1.0);
+    let aim = aim.clamp_length_max(1.0);
+    latch.roll = aim.x.clamp(-1.0, 1.0);
+    latch.aim = aim;
     latch.jump_pressed |= jump_pressed;
     latch.jump_held = jump_held;
+    latch.lunge_pressed |= lunge_pressed;
     latch.modes = modes;
 
     if keys.just_pressed(KeyCode::KeyR) {
@@ -134,11 +149,14 @@ fn read_input(
 fn tick(mut game: ResMut<Game>, mut latch: ResMut<InputLatch>) {
     let intent = Intent {
         roll: latch.roll,
+        aim: latch.aim,
         jump_pressed: latch.jump_pressed,
         jump_held: latch.jump_held,
+        lunge_pressed: latch.lunge_pressed,
         modes: latch.modes,
     };
     latch.jump_pressed = false;
+    latch.lunge_pressed = false;
     let game = &mut *game;
     game.previous.clone_from(&game.sim.blob.positions);
     game.sim.step(intent);
@@ -172,12 +190,12 @@ fn draw(game: Res<Game>, latch: Res<InputLatch>, fixed: Res<Time<Fixed>>, mut gi
     }
 
     let modes = latch.modes;
-    let tar = if modes.sticky {
+    let tar = if game.sim.controller.invulnerable() {
+        Color::WHITE
+    } else if modes.sticky {
         Color::srgb(0.45, 0.85, 0.3)
-    } else if modes.slick {
+    } else if modes.bouncy {
         Color::srgb(0.4, 0.7, 1.0)
-    } else if modes.heavy {
-        Color::srgb(0.6, 0.6, 0.65)
     } else {
         Color::srgb(0.95, 0.75, 0.3)
     };

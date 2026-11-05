@@ -39,7 +39,7 @@ impl Sim {
     }
 
     /// Advances one fixed tick.
-    pub fn step(&mut self, intent: Intent) -> Option<Event> {
+    pub fn step(&mut self, intent: Intent) -> Vec<Event> {
         self.tick += 1;
         self.controller
             .step(&mut self.blob, &self.level, intent, DT)

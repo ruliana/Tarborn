@@ -12,12 +12,10 @@ use crate::level::Level;
 /// Which tar properties the player is holding. They can be combined.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct TarModes {
-    /// Grip any surface: walls, ceilings, and (later) objects.
+    /// Grip any surface: walls, ceilings, and (later) enemies and props.
     pub sticky: bool,
-    /// No friction: slide down slopes and through gaps.
-    pub slick: bool,
-    /// Dense: falls harder, holds its shape, and (later) pushes things around.
-    pub heavy: bool,
+    /// Springy and nearly frictionless: rebounds off whatever it hits, keeping speed.
+    pub bouncy: bool,
 }
 
 /// Tuning knobs. Units are metres, seconds and "per second squared".
@@ -30,7 +28,6 @@ pub struct BlobParams {
     /// Extra distance within which a point still counts as touching a surface.
     pub contact_slop: f32,
     pub gravity: Vec2,
-    pub heavy_gravity_scale: f32,
     pub solver_iterations: usize,
     /// 0..1 stiffness of the perimeter edges, per solver iteration.
     pub edge_stiffness: f32,
@@ -38,7 +35,6 @@ pub struct BlobParams {
     pub area_stiffness: f32,
     /// 0..1 pull toward the rest shape, per iteration. Low values feel gooey.
     pub shape_stiffness: f32,
-    pub heavy_shape_stiffness: f32,
     /// Tangential acceleration that spins the blob, which rolls it on contact.
     pub roll_accel: f32,
     /// Direct horizontal acceleration while airborne.
@@ -46,7 +42,11 @@ pub struct BlobParams {
     /// Fraction of a touching point's sliding removed per solver iteration.
     pub friction: f32,
     pub grip_friction: f32,
-    pub slick_friction: f32,
+    pub bounce_friction: f32,
+    /// 0..1 fraction of the impact speed a bouncy blob keeps when it rebounds.
+    pub restitution: f32,
+    /// A bouncy blob only rebounds from impacts faster than this, so it can rest.
+    pub min_bounce_speed: f32,
     /// While sticky, a point that was touching is pulled back onto the surface
     /// if it has drifted less than this far off it.
     pub grip_range: f32,
@@ -70,23 +70,23 @@ impl Default for BlobParams {
             point_radius: 0.06,
             contact_slop: 0.03,
             gravity: Vec2::new(0.0, -30.0),
-            heavy_gravity_scale: 2.2,
             solver_iterations: 8,
             edge_stiffness: 0.9,
             area_stiffness: 0.5,
             shape_stiffness: 0.03,
-            heavy_shape_stiffness: 0.12,
             roll_accel: 120.0,
             air_accel: 14.0,
             friction: 0.3,
             grip_friction: 0.5,
-            slick_friction: 0.0,
+            bounce_friction: 0.05,
+            restitution: 0.85,
+            min_bounce_speed: 3.0,
             grip_range: 0.15,
             grip_pull: 0.1,
             grip_inv_mass: 1.0,
             unstick_time: 0.15,
             linear_damping: 0.3,
-            max_point_speed: 20.0,
+            max_point_speed: 32.0,
         }
     }
 }
@@ -98,6 +98,8 @@ pub struct Blob {
     pub velocities: Vec<Vec2>,
     /// Surface normal under each point from the last step, if it was touching.
     pub contacts: Vec<Option<Vec2>>,
+    /// Multiplies gravity. The controller turns it off during a lunge.
+    pub gravity_scale: f32,
     rest_offsets: Vec<Vec2>,
     rest_edge: f32,
     rest_area: f32,
@@ -123,6 +125,7 @@ impl Blob {
             positions: rest_offsets.iter().map(|&o| center + o).collect(),
             velocities: vec![Vec2::ZERO; n],
             contacts: vec![None; n],
+            gravity_scale: 1.0,
             rest_offsets,
             rest_edge,
             rest_area,
@@ -175,6 +178,20 @@ impl Blob {
         self.unstick_left = self.params.unstick_time;
     }
 
+    /// Briefly releases any grip without changing velocity.
+    pub fn unstick(&mut self) {
+        self.unstick_left = self.params.unstick_time;
+    }
+
+    /// Replaces the blob's overall velocity with `velocity`, keeping its spin
+    /// and wobble (each point's motion relative to the average).
+    pub fn set_velocity(&mut self, velocity: Vec2) {
+        let delta = velocity - self.velocity();
+        for v in &mut self.velocities {
+            *v += delta;
+        }
+    }
+
     /// Removes part of the upward velocity, for variable jump height.
     pub fn cut_rise(&mut self, keep: f32) {
         for v in &mut self.velocities {
@@ -185,16 +202,14 @@ impl Blob {
     }
 
     /// Advances the simulation by `dt` seconds. `roll` is -1 (left) to 1 (right).
-    pub fn step(&mut self, level: &Level, dt: f32, roll: f32, modes: TarModes) {
+    ///
+    /// Returns the surface normal if a bouncy blob rebounded this step.
+    pub fn step(&mut self, level: &Level, dt: f32, roll: f32, modes: TarModes) -> Option<Vec2> {
+        let incoming = self.velocity();
         let p = &self.params;
         let n = self.positions.len();
         let roll = roll.clamp(-1.0, 1.0);
-        let gravity = p.gravity
-            * if modes.heavy {
-                p.heavy_gravity_scale
-            } else {
-                1.0
-            };
+        let gravity = p.gravity * self.gravity_scale;
         let airborne = self.touching_count() == 0;
         let center = self.center();
         let damping = (1.0 - p.linear_damping * dt).max(0.0);
@@ -205,6 +220,16 @@ impl Blob {
         // the body hangs from them instead of dragging them along.
         for i in 0..n {
             self.held[i] = if gripping { self.contacts[i] } else { None };
+            // Rolling into a corner: let go of the surface being rolled off,
+            // so the blob transfers onto the one ahead instead of wedging.
+            if let Some(normal) = self.held[i]
+                && roll.abs() > 0.1
+            {
+                let travel = Vec2::new(normal.y, -normal.x) * roll.signum();
+                if self.contacts.iter().flatten().any(|m| m.dot(travel) < -0.5) {
+                    self.held[i] = None;
+                }
+            }
             self.inv_mass[i] = if self.held[i].is_some() {
                 p.grip_inv_mass
             } else {
@@ -229,13 +254,9 @@ impl Blob {
         }
 
         // 2. Solve constraints on the predicted positions.
-        let shape_k = if modes.heavy {
-            p.heavy_shape_stiffness
-        } else {
-            p.shape_stiffness
-        };
-        let friction = if modes.slick {
-            p.slick_friction
+        let shape_k = p.shape_stiffness;
+        let friction = if modes.bouncy {
+            p.bounce_friction
         } else if gripping {
             p.grip_friction
         } else {
@@ -281,12 +302,32 @@ impl Blob {
         for i in 0..n {
             let mut v = (self.scratch[i] - self.positions[i]) / dt;
             if let Some(normal) = self.contacts[i] {
-                // Remove any velocity into the surface. (Tar never bounces.)
+                // Remove any velocity into the surface. Bouncing is step 4.
                 v -= normal * v.dot(normal).min(0.0);
             }
             self.velocities[i] = v;
             self.positions[i] = self.scratch[i];
         }
+
+        // 4. Bounce: reflect the body's incoming velocity off the surfaces it hit.
+        // Done for the whole body, not per point, so rebounds are crisp and predictable.
+        if !modes.bouncy {
+            return None;
+        }
+        let normal = self
+            .contacts
+            .iter()
+            .flatten()
+            .copied()
+            .sum::<Vec2>()
+            .try_normalize()?;
+        let into = incoming.dot(normal);
+        if into > -self.params.min_bounce_speed {
+            return None;
+        }
+        let rebound = incoming - normal * into * (1.0 + self.params.restitution);
+        self.set_velocity(rebound);
+        Some(normal)
     }
 }
 

@@ -31,18 +31,11 @@ fn with_modes(modes: TarModes) -> Intent {
 
 const STICKY: TarModes = TarModes {
     sticky: true,
-    slick: false,
-    heavy: false,
+    bouncy: false,
 };
-const SLICK: TarModes = TarModes {
+const BOUNCY: TarModes = TarModes {
     sticky: false,
-    slick: true,
-    heavy: false,
-};
-const HEAVY: TarModes = TarModes {
-    sticky: false,
-    slick: false,
-    heavy: true,
+    bouncy: true,
 };
 
 fn flat_floor() -> Level {
@@ -327,27 +320,63 @@ fn slide_distance(modes: TarModes) -> f32 {
 }
 
 #[test]
-fn slick_slides_down_slopes_and_sticky_does_not() {
-    let slick = slide_distance(SLICK);
+fn bouncy_slides_down_slopes_and_sticky_does_not() {
+    let bouncy = slide_distance(BOUNCY);
     let sticky = slide_distance(STICKY);
-    assert!(slick > 2.0, "slick only slid {slick}");
+    assert!(bouncy > 2.0, "bouncy only slid {bouncy}");
     assert!(sticky < 0.5, "sticky slid {sticky}");
 }
 
+/// Highest the blob's center gets after first touching the floor.
+fn rebound_height(modes: TarModes, drop_from: f32) -> f32 {
+    let mut sim = Sim::new(flat_floor(), v(0.0, drop_from));
+    while sim.blob.touching_count() == 0 {
+        sim.step(with_modes(modes));
+    }
+    let mut best = f32::MIN;
+    for _ in 0..ticks(1.5) {
+        sim.step(with_modes(modes));
+        best = best.max(sim.blob.center().y);
+    }
+    best
+}
+
 #[test]
-fn heavy_falls_faster() {
-    let fall = |modes| {
-        let mut sim = Sim::new(Level::default(), Vec2::ZERO);
-        run(&mut sim, with_modes(modes), 0.5);
-        sim.blob.center().y
-    };
-    assert!(fall(HEAVY) < fall(TarModes::default()) - 1.0);
+fn bouncy_rebounds_from_a_drop_and_plain_tar_does_not() {
+    let bouncy = rebound_height(BOUNCY, 6.0);
+    let plain = rebound_height(TarModes::default(), 6.0);
+    assert!(bouncy > 3.5, "bouncy only rebounded to {bouncy}");
+    assert!(plain < 1.0, "plain tar rebounded to {plain}");
+}
+
+#[test]
+fn bouncy_can_still_roll() {
+    let mut sim = settled_on_floor();
+    let start = sim.blob.center().x;
+    run(
+        &mut sim,
+        Intent {
+            roll: 1.0,
+            ..with_modes(BOUNCY)
+        },
+        1.0,
+    );
+    let moved = sim.blob.center().x - start;
+    assert!(moved > 1.5, "only rolled {moved}");
+}
+
+#[test]
+fn bouncy_comes_to_rest_eventually() {
+    let mut sim = Sim::new(flat_floor(), v(0.0, 3.0));
+    run(&mut sim, with_modes(BOUNCY), 5.0);
+    assert!(sim.blob.touching_count() > 0, "still in the air");
+    assert!(sim.blob.velocity().length() < 0.5, "still moving");
 }
 
 #[test]
 fn survives_a_hard_landing() {
     let mut sim = Sim::new(flat_floor(), v(0.0, 12.0));
-    run(&mut sim, with_modes(HEAVY), 3.0);
+    run(&mut sim, idle(), 3.0);
     let ratio = sim.blob.area() / sim.blob.rest_area();
     assert!(ratio > 0.75, "crushed to {ratio} of its area");
     assert!(
@@ -363,12 +392,13 @@ fn simulation_is_deterministic() {
             let roll = ((t / 40) % 3) as f32 - 1.0;
             sim.step(Intent {
                 roll,
+                aim: v(roll, if t % 170 < 85 { -1.0 } else { 0.0 }),
                 jump_pressed: t % 90 == 0,
                 jump_held: t % 90 < 30,
+                lunge_pressed: t % 70 == 35,
                 modes: TarModes {
                     sticky: t % 200 < 50,
-                    slick: false,
-                    heavy: t % 300 > 250,
+                    bouncy: t % 300 > 250,
                 },
             });
         }
@@ -378,4 +408,26 @@ fn simulation_is_deterministic() {
     script(&mut a);
     script(&mut b);
     assert_eq!(a.blob.positions, b.blob.positions);
+}
+
+#[test]
+fn sticky_rolling_climbs_out_of_a_floor_wall_corner() {
+    let level = Level {
+        solids: vec![
+            Solid::rect(v(-50.0, -2.0), v(50.0, 0.0)),
+            Solid::rect(v(5.0, -2.0), v(6.0, 50.0)),
+        ],
+    };
+    let mut sim = Sim::new(level, v(3.0, 0.6));
+    run(&mut sim, idle(), 1.0);
+    run(
+        &mut sim,
+        Intent {
+            roll: 1.0,
+            ..with_modes(STICKY)
+        },
+        2.5,
+    );
+    let c = sim.blob.center();
+    assert!(c.y > 2.5, "wedged in the corner at {c}");
 }

@@ -1,6 +1,8 @@
 //! Tarborn's Bevy shell. It samples input, advances the simulation at a fixed
 //! rate, and draws the result. All gameplay rules live in `tarborn_sim`.
 
+mod audio;
+
 use bevy::app::RunFixedMainLoopSystems;
 use bevy::prelude::*;
 use tarborn_sim::combat::SPIT_RADIUS;
@@ -30,6 +32,7 @@ fn main() {
         .insert_resource(ClearColor(Color::srgb(0.07, 0.06, 0.08)))
         .insert_resource(Game::new(Room::Arena))
         .init_resource::<InputLatch>()
+        .add_plugins(audio::SoundPlugin)
         .add_systems(Startup, spawn_camera)
         // Sample input after Bevy has updated devices this frame but before the
         // fixed ticks run, so a press is simulated in the same frame it happened.
@@ -224,7 +227,11 @@ fn read_input(
     }
 }
 
-fn tick(mut game: ResMut<Game>, mut latch: ResMut<InputLatch>) {
+fn tick(
+    mut game: ResMut<Game>,
+    mut latch: ResMut<InputLatch>,
+    mut sound: ResMut<audio::SoundCues>,
+) {
     let intent = Intent {
         roll: latch.roll,
         aim: latch.aim,
@@ -246,7 +253,8 @@ fn tick(mut game: ResMut<Game>, mut latch: ResMut<InputLatch>) {
     game.previous_enemies.clear();
     game.previous_enemies
         .extend(game.sim.enemies.iter().map(|e| e.position));
-    game.sim.step(intent);
+    let events = game.sim.step(intent);
+    sound.observe(&game.sim, &events);
     for ring in &mut game.rings {
         ring.age += DT;
     }

@@ -1,0 +1,523 @@
+// Tarborn's sound effects, all synthesized from the numbers below.
+//
+// Edit and save while the game runs: it reloads this file within half a
+// second. A typo is reported in the console and the previous sounds stay.
+// To listen outside the game:
+//   cargo run -p tarborn_sfx --example render -- crates/tarborn/assets/sfx.ron out/
+//
+// `cues` tunes when sounds fire and how loud. `sounds` describes each sound.
+//
+// A sound is one or more layers mixed together. Each layer is an
+// sfxr-style voice; any field left out takes its default:
+//   wave: Sine | Triangle | Square | Saw | Noise          (Sine)
+//   gain 1, delay 0                    level, and seconds before it starts
+//   attack 0, hold 0, decay 0.2        envelope, seconds
+//   decay_curve 1                      >1 percussive, <1 sustained
+//   punch 0                            extra gain at the front
+//   freq 440, freq_end (none)          Hz; glides exponentially
+//   slide_time (whole layer)           seconds the glide takes
+//   arp_time 0, arp_ratio 1            pitch step after arp_time seconds
+//   vibrato_depth 0, vibrato_rate 0    semitones, Hz
+//   duty 0.5, duty_end (none)          Square pulse width
+//   lowpass 0, lowpass_end (none)      Hz, 0 is off; swept over the layer
+//   highpass 0, highpass_end (none)    Hz, 0 is off
+//   resonance 0                        0..0.98, wetter/whistlier filters
+//   drive 0                            soft-clip grit
+//   seed 1                             noise pattern
+// Per sound: volume 1, limit true, pitch_jitter 0 (semitones), volume_jitter 0,
+// intensity_volume (1, 1) and intensity_pitch (1, 1) at intensity 0 and 1,
+// cooldown 0 (seconds), max_voices 4.
+(
+    cues: (
+        master_volume: 0.7,
+
+        // Landing: falling speed (m/s) that starts making a sound, and the
+        // speed that plays it at full intensity.
+        land_min_speed: 2.5,
+        land_full_speed: 14.0,
+        // Seconds airborne before touching down counts as a landing.
+        land_min_air_time: 0.08,
+
+        // Stick: a shrunk (sticky) blob touching a surface. Same speed ramp
+        // as landing; a stick fires even when slow, at `stick_min_intensity`.
+        stick_min_intensity: 0.25,
+        stick_full_speed: 10.0,
+        stick_min_air_time: 0.05,
+        // A contact normal with y below this is a wall or ceiling. Gripping
+        // one while already touching the floor also sticks.
+        stick_wall_normal_y: 0.3,
+
+        // Damage that plays an impact at full intensity.
+        impact_damage_full: 3.0,
+        // Hits from shockwaves and from enemies hurting each other play
+        // quieter than the player's direct hits.
+        shockwave_intensity: 0.4,
+        struck_intensity: 0.6,
+
+        slam_full_speed: 25.0,
+        bounce_full_speed: 12.0,
+        throw_full_speed: 20.0,
+
+        // Enemy sounds fade with distance (m) from the blob: full volume
+        // inside `near`, `far_volume` at `far` and beyond.
+        hearing_near: 6.0,
+        hearing_far: 22.0,
+        far_volume: 0.15,
+
+        // A telegraph is cut when its windup is interrupted, fading over
+        // this many seconds.
+        telegraph_cut_fade: 0.06,
+
+        // How often (seconds) to check this file for changes.
+        reload_interval: 0.5,
+    ),
+
+    sounds: {
+        // ---- The blob ----------------------------------------------------
+
+        // Jump: a wet upward "bloop" as the tar leaves the surface.
+        "jump": (
+            volume: 0.55,
+            pitch_jitter: 1.0,
+            volume_jitter: 0.1,
+            layers: [
+                // Body: sine gliding up.
+                (wave: Sine, freq: 170, freq_end: 480, slide_time: 0.09,
+                 attack: 0.004, decay: 0.13, decay_curve: 1.6, punch: 0.3),
+                // Suction pop as it unsticks.
+                (wave: Noise, freq: 9000, gain: 0.45,
+                 lowpass: 2600, lowpass_end: 700, resonance: 0.6,
+                 decay: 0.05, decay_curve: 2.0, seed: 3),
+            ],
+        ),
+
+        // Launch: a shrunk blob bursting off a surface. Charge = intensity.
+        "launch": (
+            volume: 0.65,
+            pitch_jitter: 0.6,
+            intensity_volume: (0.7, 1.1),
+            intensity_pitch: (1.1, 0.85),
+            layers: [
+                (wave: Sine, freq: 110, freq_end: 520, slide_time: 0.14,
+                 attack: 0.004, decay: 0.2, decay_curve: 1.4, punch: 0.6, drive: 0.8),
+                (wave: Noise, freq: 12000, gain: 0.5,
+                 lowpass: 900, lowpass_end: 4000, resonance: 0.4,
+                 attack: 0.01, decay: 0.18, decay_curve: 1.5, seed: 4),
+            ],
+        ),
+
+        // Land: a soft, heavy splat. Falling speed = intensity.
+        "land": (
+            volume: 0.6,
+            pitch_jitter: 1.2,
+            volume_jitter: 0.1,
+            intensity_volume: (0.35, 1.0),
+            intensity_pitch: (1.15, 0.85),
+            cooldown: 0.06,
+            layers: [
+                (wave: Sine, freq: 140, freq_end: 55, slide_time: 0.08,
+                 decay: 0.12, decay_curve: 2.0, punch: 0.5, drive: 0.6),
+                (wave: Noise, freq: 7000, gain: 0.55,
+                 lowpass: 1400, lowpass_end: 300, resonance: 0.5,
+                 decay: 0.09, decay_curve: 2.2, seed: 5),
+            ],
+        ),
+
+        // Stick: a shrunk blob grabbing a surface. Wet, resonant squelch
+        // with a sucking tail.
+        "stick": (
+            volume: 0.38,
+            pitch_jitter: 1.5,
+            volume_jitter: 0.15,
+            intensity_volume: (0.5, 1.0),
+            intensity_pitch: (1.1, 0.9),
+            cooldown: 0.08,
+            layers: [
+                // The squelch: noise through a resonant low-pass sweeping down.
+                (wave: Noise, freq: 11000,
+                 lowpass: 3200, lowpass_end: 350, resonance: 0.85,
+                 attack: 0.003, decay: 0.16, decay_curve: 1.3, seed: 7),
+                // The splat body.
+                (wave: Sine, freq: 260, freq_end: 120, slide_time: 0.06,
+                 gain: 0.6, decay: 0.08, decay_curve: 1.8, punch: 0.4),
+                // Suction: a little rising pull, slightly late.
+                (wave: Triangle, freq: 180, freq_end: 340, delay: 0.05,
+                 gain: 0.25, attack: 0.02, decay: 0.1, lowpass: 900),
+            ],
+        ),
+
+        // Shrink: Grip goes down; the tar tightens. Quiet, short.
+        "shrink": (
+            volume: 0.3,
+            pitch_jitter: 0.8,
+            cooldown: 0.05,
+            layers: [
+                (wave: Sine, freq: 420, freq_end: 190, decay: 0.07, decay_curve: 1.5),
+                (wave: Noise, freq: 6000, gain: 0.3,
+                 lowpass: 1800, lowpass_end: 600, resonance: 0.7,
+                 decay: 0.05, seed: 8),
+            ],
+        ),
+
+        // Lunge: a quick whoosh toward the target.
+        "lunge": (
+            volume: 0.75,
+            pitch_jitter: 1.0,
+            layers: [
+                (wave: Noise, freq: 14000,
+                 lowpass: 700, lowpass_end: 3500, highpass: 300, resonance: 0.55,
+                 attack: 0.03, decay: 0.16, decay_curve: 1.4, seed: 9),
+                (wave: Sine, freq: 300, freq_end: 600, gain: 0.25,
+                 attack: 0.01, decay: 0.1),
+            ],
+        ),
+
+        "slam_start": (
+            volume: 0.45,
+            layers: [
+                (wave: Noise, freq: 12000,
+                 lowpass: 3000, lowpass_end: 600, resonance: 0.5,
+                 attack: 0.02, hold: 0.05, decay: 0.15, seed: 10),
+                (wave: Sine, freq: 500, freq_end: 160, gain: 0.3, decay: 0.15),
+            ],
+        ),
+
+        // Slam: hitting the ground hard. Speed = intensity.
+        "slam": (
+            volume: 0.6,
+            pitch_jitter: 0.7,
+            intensity_volume: (0.6, 1.0),
+            intensity_pitch: (1.1, 0.85),
+            layers: [
+                (wave: Sine, freq: 120, freq_end: 38, slide_time: 0.15,
+                 decay: 0.3, decay_curve: 1.8, punch: 0.8, drive: 1.5),
+                (wave: Noise, freq: 8000, gain: 0.7,
+                 lowpass: 2500, lowpass_end: 200, resonance: 0.3,
+                 decay: 0.25, decay_curve: 2.0, seed: 11),
+                (wave: Noise, freq: 20000, gain: 0.35, highpass: 2500,
+                 decay: 0.02, seed: 12),
+            ],
+        ),
+
+        // Bounce: a rubbery boing. Speed = intensity.
+        "bounce": (
+            volume: 0.5,
+            pitch_jitter: 1.0,
+            intensity_volume: (0.5, 1.0),
+            intensity_pitch: (0.9, 1.1),
+            cooldown: 0.05,
+            layers: [
+                (wave: Triangle, freq: 150, freq_end: 380, slide_time: 0.07,
+                 vibrato_depth: 0.8, vibrato_rate: 22,
+                 decay: 0.2, decay_curve: 1.5, punch: 0.4, lowpass: 2200),
+                (wave: Sine, freq: 90, freq_end: 60, gain: 0.5, decay: 0.07),
+            ],
+        ),
+
+        // ---- Hitting things ----------------------------------------------
+
+        // Impact: the player's lunge or roll connecting. Damage = intensity.
+        // Three layers: transient click, pitched body thump, crunchy tail.
+        "impact": (
+            volume: 0.6,
+            pitch_jitter: 1.2,
+            volume_jitter: 0.08,
+            intensity_volume: (0.55, 1.0),
+            intensity_pitch: (1.15, 0.85),
+            max_voices: 6,
+            layers: [
+                (wave: Noise, freq: 22000, gain: 0.6, highpass: 2000,
+                 decay: 0.015, decay_curve: 1.5, seed: 13),
+                (wave: Sine, freq: 190, freq_end: 55, slide_time: 0.07,
+                 decay: 0.16, decay_curve: 2.2, punch: 1.0, drive: 2.0),
+                (wave: Noise, freq: 6000, gain: 0.5,
+                 lowpass: 3200, lowpass_end: 400, resonance: 0.4,
+                 decay: 0.12, decay_curve: 1.8, seed: 14),
+            ],
+        ),
+
+        // A slam landing right on an enemy: the impact, bigger and lower.
+        "impact_heavy": (
+            volume: 0.7,
+            pitch_jitter: 0.8,
+            intensity_volume: (0.7, 1.0),
+            intensity_pitch: (1.0, 0.8),
+            layers: [
+                (wave: Noise, freq: 22000, gain: 0.7, highpass: 1500,
+                 decay: 0.02, seed: 15),
+                (wave: Sine, freq: 150, freq_end: 40, slide_time: 0.12,
+                 decay: 0.3, decay_curve: 2.0, punch: 1.2, drive: 2.5),
+                (wave: Saw, freq: 70, freq_end: 45, gain: 0.25,
+                 lowpass: 600, lowpass_end: 150, decay: 0.25, decay_curve: 1.5),
+                (wave: Noise, freq: 5000, gain: 0.6,
+                 lowpass: 2500, lowpass_end: 250, resonance: 0.4,
+                 decay: 0.22, decay_curve: 1.6, seed: 16),
+            ],
+        ),
+
+        // Pogo: bouncing off an enemy. A light hit plus a springy rise.
+        "pogo": (
+            volume: 0.7,
+            pitch_jitter: 1.0,
+            layers: [
+                (wave: Sine, freq: 200, freq_end: 70, decay: 0.08, decay_curve: 2.0,
+                 punch: 0.6, drive: 1.2),
+                (wave: Triangle, freq: 260, freq_end: 620, delay: 0.02,
+                 gain: 0.5, decay: 0.16, vibrato_depth: 0.5, vibrato_rate: 25,
+                 lowpass: 2500),
+            ],
+        ),
+
+        // An enemy dies: wet burst.
+        "kill": (
+            volume: 0.55,
+            pitch_jitter: 1.5,
+            layers: [
+                (wave: Noise, freq: 9000,
+                 lowpass: 4000, lowpass_end: 250, resonance: 0.75,
+                 attack: 0.002, decay: 0.3, decay_curve: 1.6, seed: 17),
+                (wave: Sine, freq: 320, freq_end: 60, gain: 0.6,
+                 decay: 0.22, decay_curve: 1.5, drive: 1.0),
+                (wave: Noise, freq: 600, gain: 0.3, delay: 0.06,
+                 lowpass: 1200, decay: 0.2, seed: 18),
+            ],
+        ),
+
+        // A guard's shield stops the hit: dull metal clank.
+        "block": (
+            volume: 0.9,
+            pitch_jitter: 0.7,
+            layers: [
+                (wave: Square, freq: 820, duty: 0.3, gain: 0.4,
+                 highpass: 400, lowpass: 3000,
+                 decay: 0.18, decay_curve: 2.5),
+                (wave: Square, freq: 1230, duty: 0.4, gain: 0.25,
+                 highpass: 600, lowpass: 4000,
+                 decay: 0.12, decay_curve: 2.5),
+                (wave: Noise, freq: 20000, gain: 0.5, highpass: 3000,
+                 decay: 0.01, seed: 19),
+            ],
+        ),
+
+        // Grab: sticking onto an enemy. Thicker than "stick".
+        "grab": (
+            volume: 0.4,
+            pitch_jitter: 1.0,
+            layers: [
+                (wave: Noise, freq: 9000,
+                 lowpass: 2500, lowpass_end: 250, resonance: 0.88,
+                 attack: 0.003, decay: 0.2, decay_curve: 1.2, seed: 20),
+                (wave: Sine, freq: 200, freq_end: 85, gain: 0.7,
+                 decay: 0.12, decay_curve: 1.6, punch: 0.6),
+            ],
+        ),
+
+        "throw": (
+            volume: 0.85,
+            intensity_volume: (0.6, 1.0),
+            intensity_pitch: (0.9, 1.15),
+            layers: [
+                (wave: Noise, freq: 14000,
+                 lowpass: 600, lowpass_end: 4500, highpass: 250, resonance: 0.6,
+                 attack: 0.02, decay: 0.22, decay_curve: 1.3, seed: 21),
+                (wave: Sine, freq: 160, freq_end: 380, gain: 0.35, decay: 0.12),
+            ],
+        ),
+
+        "drop": (
+            volume: 0.35,
+            layers: [
+                (wave: Noise, freq: 6000,
+                 lowpass: 1500, lowpass_end: 400, resonance: 0.6,
+                 decay: 0.08, seed: 22),
+            ],
+        ),
+
+        // An attack passing through the shrunk blob.
+        "dodge": (
+            volume: 0.7,
+            pitch_jitter: 1.0,
+            layers: [
+                (wave: Noise, freq: 16000, highpass: 1200, highpass_end: 3500,
+                 lowpass: 6000, attack: 0.02, decay: 0.12, seed: 23),
+                (wave: Sine, freq: 900, freq_end: 1400, gain: 0.2, decay: 0.08),
+            ],
+        ),
+
+        // ---- Enemies ---------------------------------------------------
+        // Telegraphs are timed to each enemy's windup (see enemy.rs) and are
+        // cut short if the windup is interrupted. Keep each length (attack +
+        // hold + decay) close to the windup it announces.
+
+        // Guard windup (0.45 s): a rising metallic scrape, then the swing.
+        "guard_windup": (
+            volume: 0.5,
+            layers: [
+                (wave: Saw, freq: 260, freq_end: 640, slide_time: 0.42,
+                 lowpass: 900, lowpass_end: 3000, highpass: 200, resonance: 0.7,
+                 attack: 0.3, hold: 0.1, decay: 0.05),
+                (wave: Noise, freq: 3000, gain: 0.25, lowpass: 1500, lowpass_end: 4000,
+                 attack: 0.35, decay: 0.1, seed: 24),
+            ],
+        ),
+        "guard_strike": (
+            volume: 0.7,
+            pitch_jitter: 0.8,
+            layers: [
+                (wave: Noise, freq: 14000,
+                 lowpass: 4000, lowpass_end: 800, highpass: 300, resonance: 0.5,
+                 attack: 0.01, decay: 0.15, seed: 25),
+            ],
+        ),
+
+        // Grub windup: a tiny squeak. Grubs barely fight.
+        "grub_windup": (
+            volume: 0.3,
+            layers: [
+                (wave: Square, freq: 900, freq_end: 1400, duty: 0.25,
+                 lowpass: 3000, attack: 0.02, decay: 0.1),
+            ],
+        ),
+
+        // Spitter windup (0.6 s): a gurgle building in its throat.
+        "spitter_windup": (
+            volume: 0.5,
+            layers: [
+                (wave: Sine, freq: 140, freq_end: 320, slide_time: 0.55,
+                 vibrato_depth: 3.0, vibrato_rate: 13,
+                 attack: 0.45, hold: 0.1, decay: 0.05, drive: 1.0),
+                (wave: Noise, freq: 500, freq_end: 1500, gain: 0.5,
+                 lowpass: 400, lowpass_end: 2200, resonance: 0.8,
+                 attack: 0.4, hold: 0.15, decay: 0.05, seed: 26),
+            ],
+        ),
+        // The spit leaving: a wet "ptoo".
+        "spitter_strike": (
+            volume: 0.6,
+            pitch_jitter: 1.0,
+            layers: [
+                (wave: Noise, freq: 10000,
+                 lowpass: 3500, lowpass_end: 600, resonance: 0.8,
+                 decay: 0.1, decay_curve: 1.5, seed: 27),
+                (wave: Sine, freq: 420, freq_end: 180, gain: 0.5, decay: 0.08, punch: 0.5),
+            ],
+        ),
+
+        // Skitter windup (0.25 s): a fast insect chitter.
+        "skitter_windup": (
+            volume: 0.4,
+            layers: [
+                (wave: Square, freq: 1700, freq_end: 2300, duty: 0.3,
+                 vibrato_depth: 5.0, vibrato_rate: 38, lowpass: 5000, highpass: 600,
+                 attack: 0.02, hold: 0.18, decay: 0.05),
+            ],
+        ),
+        "skitter_strike": (
+            volume: 0.8,
+            layers: [
+                (wave: Noise, freq: 18000, highpass: 1500, lowpass: 7000, lowpass_end: 2500,
+                 attack: 0.005, decay: 0.12, seed: 28),
+            ],
+        ),
+        // A skitter hopping out of a lunge.
+        "evade": (
+            volume: 0.35,
+            pitch_jitter: 1.5,
+            layers: [
+                (wave: Square, freq: 1500, freq_end: 2600, duty: 0.3,
+                 lowpass: 5000, decay: 0.07),
+            ],
+        ),
+
+        // Brute windup (0.9 s): a low growl rising into the slam.
+        "brute_windup": (
+            volume: 0.5,
+            layers: [
+                (wave: Saw, freq: 48, freq_end: 92, slide_time: 0.85,
+                 lowpass: 250, lowpass_end: 1100, resonance: 0.6,
+                 attack: 0.6, hold: 0.25, decay: 0.05, drive: 2.0),
+                (wave: Noise, freq: 400, gain: 0.35, lowpass: 300, lowpass_end: 900,
+                 attack: 0.7, hold: 0.15, decay: 0.05, seed: 29),
+            ],
+        ),
+        // The brute's ground slam going off.
+        "quake": (
+            volume: 0.75,
+            layers: [
+                (wave: Sine, freq: 90, freq_end: 28, slide_time: 0.3,
+                 decay: 0.6, decay_curve: 1.6, punch: 1.0, drive: 2.0),
+                (wave: Noise, freq: 3000, gain: 0.7,
+                 lowpass: 1200, lowpass_end: 90, decay: 0.55, decay_curve: 1.4, seed: 30),
+                (wave: Noise, freq: 20000, gain: 0.4, highpass: 2000, decay: 0.03, seed: 31),
+            ],
+        ),
+        // A brute eating a grub.
+        "eaten": (
+            volume: 0.6,
+            layers: [
+                (wave: Sine, freq: 260, freq_end: 70, decay: 0.25, vibrato_depth: 2.0,
+                 vibrato_rate: 9, drive: 1.0),
+                (wave: Noise, freq: 2000, gain: 0.4, lowpass: 900, lowpass_end: 200,
+                 resonance: 0.8, decay: 0.3, seed: 32),
+            ],
+        ),
+
+        // Any enemy startled: a short alert blip.
+        "surprised": (
+            volume: 0.35,
+            pitch_jitter: 0.5,
+            cooldown: 0.1,
+            layers: [
+                (wave: Square, freq: 660, duty: 0.25, lowpass: 3500, decay: 0.05),
+                (wave: Square, freq: 990, duty: 0.25, lowpass: 3500, delay: 0.05,
+                 decay: 0.08),
+            ],
+        ),
+
+        // ---- The player's state and the arena --------------------------
+
+        "hurt": (
+            volume: 0.6,
+            layers: [
+                (wave: Square, freq: 330, freq_end: 110, duty: 0.4, duty_end: 0.15,
+                 lowpass: 2200, decay: 0.25, punch: 0.5, drive: 0.8),
+                (wave: Noise, freq: 8000, gain: 0.4, lowpass: 3000, lowpass_end: 500,
+                 decay: 0.15, seed: 33),
+            ],
+        ),
+        "death": (
+            volume: 0.6,
+            layers: [
+                (wave: Saw, freq: 260, freq_end: 45, lowpass: 1600, lowpass_end: 200,
+                 resonance: 0.5, hold: 0.1, decay: 0.7, drive: 1.0),
+                (wave: Noise, freq: 5000, gain: 0.5, lowpass: 2500, lowpass_end: 150,
+                 resonance: 0.8, decay: 0.6, seed: 34),
+            ],
+        ),
+        "heal": (
+            volume: 0.45,
+            layers: [
+                (wave: Triangle, freq: 523, arp_time: 0.06, arp_ratio: 1.5,
+                 hold: 0.12, decay: 0.12),
+            ],
+        ),
+        "wave": (
+            volume: 0.5,
+            layers: [
+                (wave: Saw, freq: 110, lowpass: 500, lowpass_end: 1200,
+                 attack: 0.08, hold: 0.25, decay: 0.3),
+                (wave: Saw, freq: 165, gain: 0.6, lowpass: 600, lowpass_end: 1400,
+                 attack: 0.1, hold: 0.25, decay: 0.3),
+            ],
+        ),
+        "cleared": (
+            volume: 0.5,
+            layers: [
+                (wave: Square, freq: 392, duty: 0.25, lowpass: 3000,
+                 arp_time: 0.1, arp_ratio: 1.26, hold: 0.2, decay: 0.1),
+                (wave: Square, freq: 784, duty: 0.25, lowpass: 3000, delay: 0.3,
+                 hold: 0.15, decay: 0.4),
+            ],
+        ),
+    },
+)

@@ -15,7 +15,8 @@ platformer.
 crates/
   tarborn_sim/   Simulation core: blob solver, level collision, controls feel.
                  Pure Rust + glam. All gameplay rules live here.
-  tarborn/       The Bevy game: input, fixed 120 Hz tick, rendering.
+  tarborn_sfx/   Procedural sound synthesis (sfxr-style, layered). No engine.
+  tarborn/       The Bevy game: input, fixed 120 Hz tick, rendering, sound.
 ```
 
 ## Running
@@ -43,6 +44,7 @@ Two buttons, plus the stick:
 | Grip    | K or Left Shift (hold) | Either trigger, or West (X / Square) |
 | Restart | R                      |                                 |
 | Switch room (arena / training) | T |                          |
+| Mute    | M                      |                                 |
 
 Two verbs: **Grip shrinks**, **Jump expands**.
 
@@ -177,3 +179,38 @@ its head show it.
 - Grubs run from skitters and brutes.
 - Every attack hurts whatever it hits: spit, swings, pounces, the brute's
   slam and thrown bodies.
+
+## Sound
+
+There are no recorded sounds. Every effect is synthesized at startup from
+numbers in [`crates/tarborn/assets/sfx.ron`](crates/tarborn/assets/sfx.ron),
+and the game reloads that file within half a second of saving it, so sounds
+can be tuned while playing. A mistake in the file is logged and the previous
+sounds stay. Set `TARBORN_SFX=/path/to/file.ron` to play from another file.
+
+The synth follows [sfxr](https://www.drpetter.se/project_sfxr.html) and its
+descendants ([jsfxr](https://sfxr.me/), bfxr, ChipTone): each voice is a
+waveform (sine, triangle, square, saw or noise) with a pitch glide, an
+envelope with punch, vibrato, an arpeggio step, and swept resonant low- and
+high-pass filters. Unlike sfxr, a sound is several **layers** mixed together,
+each with its own delay. That is how impacts are built: a bright transient
+click, a pitched body thump that drops in pitch, and a filtered noise tail.
+
+Each sound also says how it varies per play: random pitch and volume
+spread, how intensity (hit damage, fall speed, charge) maps to volume and
+pitch, a cooldown and a voice limit. The `cues` section tunes when sounds
+fire: landing and sticking speeds, how far enemies can be heard, and so on.
+
+- **Impact**, **stick** and **jump** come first. Landing while shrunk sticks
+  (a wet, resonant squelch) instead of landing (a soft thud); gripping a wall
+  after rolling into it sticks too.
+- **Enemy telegraphs** play over each windup and last as long as it does
+  (a test keeps them in step with the windup times). Hitting an enemy out of
+  its windup cuts its telegraph short.
+- Enemy sounds get quieter with distance from the blob.
+
+To listen outside the game, render every sound to WAV files:
+
+```sh
+cargo run -p tarborn_sfx --example render -- crates/tarborn/assets/sfx.ron sfx_out/
+```

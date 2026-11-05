@@ -214,55 +214,57 @@ fn sticky(jump_pressed: bool, jump_held: bool) -> Intent {
     }
 }
 
-/// Coils on a wall for `hold` seconds, releases, and returns the events and
-/// the speed right after release.
-fn coil_on_wall(hold: f32) -> (Vec<Event>, f32, Sim) {
+/// Clings to a wall, shrinks for `hold` seconds from an empty charge, then
+/// presses Jump; returns the events and the speed right after the burst.
+fn burst_off_wall(hold: f32) -> (Vec<Event>, f32, Sim) {
     let level = Level {
         solids: vec![Solid::rect(v(0.0, -50.0), v(1.0, 50.0))],
     };
     let mut sim = Sim::new(level, v(-0.52, 0.0));
     run(&mut sim, sticky(false, false), 0.5);
-    let mut events = sim.step(sticky(true, true));
-    events.extend(run(&mut sim, sticky(false, true), hold));
-    events.extend(sim.step(sticky(false, false)));
+    sim.controller.spend_charge();
+    let mut events = run(&mut sim, sticky(false, false), hold);
+    events.extend(sim.step(sticky(true, true)));
     let speed = sim.blob.velocity().length();
     (events, speed, sim)
 }
 
 #[test]
-fn sticky_jump_coils_instead_of_jumping() {
-    let (events, _, _) = coil_on_wall(0.2);
-    assert_eq!(events.first(), Some(&Event::CoilStarted), "{events:?}");
+fn grip_shrinks_and_jump_bursts_instead_of_jumping() {
+    let mut sim = settled_on_floor();
+    let events = sim.step(sticky(false, false));
+    assert_eq!(events, vec![Event::Shrank]);
+    let (events, _, _) = burst_off_wall(0.2);
     assert!(!events.iter().any(|e| matches!(e, Event::Jumped { .. })));
     assert!(events.iter().any(|e| matches!(e, Event::Launched { .. })));
 }
 
 #[test]
-fn coiling_shrinks_the_blob() {
-    let level = Level {
-        solids: vec![Solid::rect(v(0.0, -50.0), v(1.0, 50.0))],
-    };
-    let mut sim = Sim::new(level, v(-0.52, 0.0));
-    run(&mut sim, sticky(false, false), 0.5);
+fn gripping_shrinks_the_blob() {
+    let mut sim = settled_on_floor();
     let before = sim.blob.area();
-    sim.step(sticky(true, true));
-    run(&mut sim, sticky(false, true), 0.6);
-    assert!(sim.controller.is_coiling(), "let go of the coil");
+    run(&mut sim, sticky(false, false), 0.6);
+    assert!(sim.controller.is_shrunk());
     let ratio = sim.blob.area() / before;
     assert!(ratio < 0.6, "only shrank to {ratio}");
+    // Letting go of Grip grows it back.
+    run(&mut sim, Intent::default(), 0.3);
+    assert!(!sim.controller.is_shrunk());
+    let ratio = sim.blob.area() / before;
+    assert!(ratio > 0.9, "stayed small: {ratio}");
 }
 
 #[test]
-fn a_longer_coil_launches_faster() {
-    let (_, tap, _) = coil_on_wall(0.0);
-    let (_, full, _) = coil_on_wall(0.6);
-    assert!(tap > 8.0, "a tapped coil barely moved: {tap}");
+fn a_longer_shrink_bursts_faster() {
+    let (_, tap, _) = burst_off_wall(0.0);
+    let (_, full, _) = burst_off_wall(0.6);
+    assert!(tap > 8.0, "a quick burst barely moved: {tap}");
     assert!(full > tap * 1.6, "full {full}, tap {tap}");
 }
 
 #[test]
-fn coil_launches_away_from_the_wall_and_up() {
-    let (events, _, sim) = coil_on_wall(0.3);
+fn burst_launches_away_from_the_wall_and_up() {
+    let (events, _, sim) = burst_off_wall(0.3);
     let direction = events
         .iter()
         .find_map(|e| match e {
@@ -275,27 +277,23 @@ fn coil_launches_away_from_the_wall_and_up() {
 }
 
 #[test]
-fn coil_from_the_ceiling_launches_down() {
+fn burst_from_the_ceiling_launches_down() {
     let level = Level {
         solids: vec![Solid::rect(v(-50.0, 0.0), v(50.0, 1.0))],
     };
     let mut sim = Sim::new(level, v(0.0, -0.52));
     run(&mut sim, sticky(false, false), 0.5);
     sim.step(sticky(true, true));
-    run(&mut sim, sticky(false, true), 0.3);
-    sim.step(sticky(false, false));
     assert!(sim.blob.velocity().y < -10.0, "{}", sim.blob.velocity());
 }
 
 #[test]
-fn coil_follows_the_aim_when_it_points_away_from_the_surface() {
+fn burst_follows_the_aim_when_it_points_away_from_the_surface() {
     let mut sim = Sim::new(flat_floor(), v(0.0, 0.6));
     run(&mut sim, sticky(false, false), 1.0);
-    sim.step(sticky(true, true));
-    run(&mut sim, sticky(false, true), 0.3);
     sim.step(Intent {
         aim: v(1.0, 0.3),
-        ..sticky(false, false)
+        ..sticky(true, true)
     });
     let vel = sim.blob.velocity();
     assert!(vel.x > 10.0 && vel.x > vel.y * 1.5, "{vel}");

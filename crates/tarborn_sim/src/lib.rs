@@ -11,9 +11,9 @@ pub mod enemy;
 pub mod level;
 
 pub use blob::{Blob, BlobParams, TarModes};
-pub use combat::CombatParams;
+pub use combat::{CombatParams, Projectile};
 pub use controller::{Controller, Event, FeelParams, HitKind, Intent};
-pub use enemy::{Enemy, EnemyKind};
+pub use enemy::{AttackPhase, Enemy, EnemyKind, State};
 pub use level::{Level, Solid};
 
 use glam::Vec2;
@@ -35,6 +35,12 @@ pub struct Sim {
     pub hazards: Vec<Solid>,
     /// Tar drops that heal one health pip.
     pub pickups: Vec<Vec2>,
+    /// Enemy shots in flight.
+    pub projectiles: Vec<Projectile>,
+    /// Noises the player made last tick: where, and how far they carry.
+    pub noises: Vec<(Vec2, f32)>,
+    /// The enemy held in the blob's grip, if any.
+    pub held: Option<usize>,
     pub health: u32,
     pub max_health: u32,
     pub dead: bool,
@@ -58,6 +64,9 @@ impl Sim {
             enemies: Vec::new(),
             hazards: Vec::new(),
             pickups: Vec::new(),
+            noises: Vec::new(),
+            projectiles: Vec::new(),
+            held: None,
             health: combat.max_health,
             max_health: combat.max_health,
             combat,
@@ -70,15 +79,17 @@ impl Sim {
         }
     }
 
-    /// The test room with training dummies and a strip of spikes.
+    /// The test room with a dummy, grubs, guards, a spitter and spikes.
     pub fn training_room(spawn: Vec2) -> Self {
         let v = Vec2::new;
         let mut sim = Self::new(Level::test_room(), spawn);
         sim.enemies = vec![
-            Enemy::dummy(v(-8.0, 0.6)),
-            Enemy::dummy(v(-9.0, 6.1)),
+            Enemy::guard(v(-8.0, 0.6)),
+            Enemy::grub(v(-9.0, 5.85)),
             Enemy::dummy(v(6.0, 0.6)),
-            Enemy::dummy(v(16.0, 4.6)),
+            Enemy::guard(v(16.0, 4.6)),
+            Enemy::grub(v(2.5, 0.35)),
+            Enemy::spitter(v(-10.5, 5.95)),
         ];
         sim.hazards = vec![Solid::rect(v(-19.0, 0.0), v(-15.0, 0.3))];
         sim
@@ -87,6 +98,12 @@ impl Sim {
     /// True while frozen by a hit.
     pub fn in_hitstop(&self) -> bool {
         self.hitstop_left > 0.0
+    }
+
+    /// While the blob is shrunk (Grip held), some attacks pass it by: spit,
+    /// and the guard's swing.
+    pub fn player_shrunk(&self) -> bool {
+        self.controller.is_shrunk()
     }
 
     /// The player can't be hurt while lunging, slamming, or just after a hit.
@@ -107,19 +124,28 @@ impl Sim {
             return Vec::new();
         }
         intent.jump_pressed |= std::mem::take(&mut self.pending_jump);
+        // Holding jump keeps the body springy, unless gripping (then it shrinks).
+        intent.modes.bouncy |= intent.jump_held && !intent.modes.sticky;
         intent.lunge_pressed |= std::mem::take(&mut self.pending_lunge);
 
+        let mut events = Vec::new();
+        // While holding an enemy, Jump throws it instead of jumping.
+        if self.held.is_some() && intent.jump_pressed {
+            intent.jump_pressed = false;
+            combat::throw(self, intent.aim, &mut events);
+        }
         let targets: Vec<Vec2> = self
             .enemies
             .iter()
-            .filter(|e| e.alive())
+            .filter(|e| e.alive() && !e.held && !e.thrown)
             .map(|e| e.position)
             .collect();
-        let mut events = self
-            .controller
-            .step(&mut self.blob, &self.level, intent, &targets, DT);
+        events.extend(
+            self.controller
+                .step(&mut self.blob, &self.level, intent, &targets, DT),
+        );
         self.hurt_left = (self.hurt_left - DT).max(0.0);
-        combat::resolve(self, intent.modes, &mut events);
+        combat::resolve(self, intent, &mut events);
         events
     }
 

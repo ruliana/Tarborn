@@ -2,7 +2,7 @@
 //! player would notice, run headlessly on the deterministic simulation.
 
 use glam::Vec2;
-use tarborn_sim::{DT, Intent, Level, Sim, Solid, TarModes};
+use tarborn_sim::{DT, Event, Intent, Level, Sim, Solid, TarModes};
 
 fn v(x: f32, y: f32) -> Vec2 {
     Vec2::new(x, y)
@@ -160,15 +160,18 @@ fn landing_tick(height: f32) -> usize {
 fn jumped_after_landing(press_ticks_early: usize) -> bool {
     let land = landing_tick(3.0);
     let mut sim = Sim::new(flat_floor(), v(0.0, 3.0));
+    let mut jumped = false;
     for tick in 1..=land + ticks(0.3) {
         let pressed = tick + press_ticks_early == land;
-        sim.step(Intent {
+        let events = sim.step(Intent {
             jump_pressed: pressed,
             jump_held: tick + press_ticks_early >= land,
             ..Default::default()
         });
+        jumped |= events.iter().any(|e| matches!(e, Event::Jumped { .. }));
     }
-    sim.blob.center().y > 1.5
+    // Holding Jump through the landing bounces, so look for the jump itself.
+    jumped
 }
 
 #[test]

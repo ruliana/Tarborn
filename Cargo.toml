@@ -1,0 +1,26 @@
+[workspace]
+resolver = "3"
+members = ["crates/tarborn_sim", "crates/tarborn"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+license = "UNLICENSED"
+rust-version = "1.97.1"
+
+[workspace.dependencies]
+# Keep glam in lockstep with the version Bevy re-exports, so sim types are Bevy types.
+glam = "0.33"
+bevy = { version = "0.20.1", default-features = false, features = ["2d", "audio"] }
+tarborn_sim = { path = "crates/tarborn_sim" }
+
+# Bevy is unusably slow at opt-level 0. Optimise our code a little and dependencies fully.
+[profile.dev]
+opt-level = 1
+
+[profile.dev.package."*"]
+opt-level = 3
+
+[profile.release]
+codegen-units = 1
+lto = "thin"

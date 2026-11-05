@@ -47,8 +47,11 @@ Two buttons, plus the stick:
 Two verbs: **Grip shrinks**, **Jump expands**.
 
 - **Grip** (hold) makes the blob small and sticky. It clings to walls and
-  ceilings (roll to crawl along them), makes no noise, dodges some attacks,
-  and charges up over 0.6 s.
+  ceilings (roll to crawl along them) and charges up over 0.6 s.
+- **The moment of shrinking is a dodge.** For 0.15 s while the blob goes
+  from full size to small, nothing can hurt it (it flashes white). Shrinking
+  again within 0.45 s of a dodge is instant and doesn't dodge, so time it
+  rather than tapping. Staying small doesn't protect you.
 - **Jump** on a surface jumps instantly. Hold it to go higher.
 - **Jump while shrunk** on a surface bursts: a lunge at a nearby enemy, or,
   with none near, a launch off the surface along the aim. Both are stronger
@@ -132,22 +135,21 @@ its head show it.
 
 | State      | Mark                  | What it means for you                                   |
 |------------|-----------------------|---------------------------------------------------------|
-| Unaware    | none                  | First hit is a surprise: triple damage.                 |
+| Unaware    | none                  | Hasn't spotted you. First hit is a surprise: triple damage. |
 | Surprised  | white `!`             | Frozen for a moment, triple damage.                     |
-| Suspicious | yellow ring           | Heard you. Turns to look after a short reaction.        |
-| Searching  | orange ring           | Lost you, checking your last spot. Gives up after 4 s.  |
+| Chasing    | none                  | Skitter and brute: sees you and is coming.              |
+| Searching  | orange ring           | Saw you, then lost sight. Checking your last spot; gives up after 4 s. |
 | Defending  | cyan shield line      | Guard only: blocks lunges and impacts from the front.   |
-| Attacking  | flashing red, then swing circle or shot | Wind-up, then the attack. Open afterwards. Shrinking dodges it. |
+| Attacking  | flashing red, then swing circle or shot | Wind-up, then the attack. Open afterwards. Shrink as it lands to dodge. |
 | Dizzy      | orbiting dots, grey   | Double damage. Caused by slams, pogos, shockwaves.      |
 | Prone      | flattened, grey       | Double damage.                                          |
 | Fleeing    | green                 | Running away from you or from something it fears.       |
 | Dodging    | white dash            | Skitter only: hopping out of the way of a lunge.        |
 
-- **Sight**: enemies see in front of them, not through walls. Guards see
-  8 m, grubs 4 m. Spotting you within 3 m startles them.
-- **Noise**: jumps, lunges, launches, bounces, hits, throws and slams make noise of
-  growing reach (the white rings). Fast rolling makes a little. Sticky
-  movement makes none, so crawling is how you sneak.
+- **Sight only**: an enemy on screen spots you if no terrain is in the way,
+  in any direction. There is no hearing. Terrain always blocks sight, so the
+  way to get a surprise hit is to come at an enemy from behind a wall, a
+  ledge or the edge of the screen. Spotting you within 3 m startles it.
 - **Guard**: patrols, blocks from the front even while winding up, and turns
   around only after you've been behind it for 0.4 s. Beat it from behind,
   from above (slam or pogo makes it dizzy), or right after its swing.
@@ -155,19 +157,19 @@ its head show it.
 - **Spitter** (orange diamond): keeps its distance, aims for 0.6 s (a line
   grows toward you), then spits a glob that flies straight. It backs away if
   you get within 3 m, and takes double damage while recovering from a shot.
-- **Skitter** (yellow triangle): fast and never caught unaware. It hops out
-  of the way of any lunge or grab, then comes straight back with a pounce
-  that shrinking doesn't dodge. Beat it with what it can't hop away from: a
+- **Skitter** (yellow triangle): fast, and too twitchy to be surprised. It
+  hops out of the way of any lunge or grab, then comes straight back with a
+  pounce. Beat it with what it can't hop away from: a
   slam or its shockwave, landing on it with Jump held, something thrown at
   it, or a lunge while it recovers from a pounce (double damage).
 - **Brute** (big red square): slow, with 200 health. It rises up for 0.9 s,
   then slams the ground, hurting everything on the ground within 3 m,
-  friend or not. Shrinking doesn't dodge the slam: be in the air. It can't
+  friend or not. Be in the air when it lands, or shrink right then. It can't
   be grabbed, barely moves when hit, and shrugs off hits during its wind-up.
   It takes double damage while recovering, and a slam then knocks it prone.
-- **Shrink to dodge**: while Grip is held, spit and guard swings pass you by.
-  The combo is to shrink under the attack, then press Jump to burst into the
-  enemy while it recovers.
+- **Shrink to dodge**: press Grip just as any attack lands (spit, a swing, a
+  pounce, a brute's slam) and it passes you by. The combo is to shrink under
+  the attack, then press Jump to burst into the enemy while it recovers.
 
 ### How enemies treat each other
 

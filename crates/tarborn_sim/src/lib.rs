@@ -25,6 +25,10 @@ use glam::Vec2;
 pub const TICKS_PER_SECOND: f32 = 120.0;
 pub const DT: f32 = 1.0 / TICKS_PER_SECOND;
 
+/// Half the screen, in metres, in the training room and in the arena.
+pub const TRAINING_VIEW: Vec2 = Vec2::new(13.3, 7.5);
+pub const ARENA_VIEW: Vec2 = Vec2::new(21.3, 12.0);
+
 /// Seconds a chain stays alive without another hit.
 pub const COMBO_WINDOW: f32 = 2.0;
 
@@ -78,8 +82,9 @@ pub struct Sim {
     pub pickups: Vec<Vec2>,
     /// Enemy shots in flight.
     pub projectiles: Vec<Projectile>,
-    /// Noises the player made last tick: where, and how far they carry.
-    pub noises: Vec<(Vec2, f32)>,
+    /// Half the size of the screen around the player, in metres. Enemies see
+    /// the player when both are on screen and no terrain is in between.
+    pub view: Vec2,
     /// The enemy held in the blob's grip, if any.
     pub held: Option<usize>,
     /// Waves of enemies, in the arena room.
@@ -108,7 +113,7 @@ impl Sim {
             enemies: Vec::new(),
             hazards: Vec::new(),
             pickups: Vec::new(),
-            noises: Vec::new(),
+            view: TRAINING_VIEW,
             projectiles: Vec::new(),
             held: None,
             arena: None,
@@ -149,18 +154,14 @@ impl Sim {
         let mut sim = Self::new(Level::arena(), ARENA_SPAWN);
         sim.hazards = arena::arena_hazards();
         sim.arena = Some(Arena::standard());
+        // The arena camera is zoomed out to show the whole room.
+        sim.view = ARENA_VIEW;
         sim
     }
 
     /// True while frozen by a hit.
     pub fn in_hitstop(&self) -> bool {
         self.hitstop_left > 0.0
-    }
-
-    /// While the blob is shrunk (Grip held), some attacks pass it by: spit,
-    /// and the guard's swing.
-    pub fn player_shrunk(&self) -> bool {
-        self.controller.is_shrunk()
     }
 
     /// The player can't be hurt while lunging, slamming, or just after a hit.

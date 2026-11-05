@@ -67,14 +67,21 @@ fn every_wave_lands_on_solid_ground() {
     run(&mut sim, Intent::default(), 1.6);
     for wave in 0..waves {
         let first = sim.enemies.len() - sim.arena.as_ref().unwrap().waves[wave].len();
-        // Give them a moment to land.
-        run(&mut sim, Intent::default(), 0.6);
-        for enemy in &sim.enemies[first..] {
+        // Each one should touch down within a moment (skitters hop about, so
+        // check over the whole moment rather than at its end).
+        let count = sim.enemies.len() - first;
+        let mut landed = vec![false; count];
+        for _ in 0..ticks(0.8) {
+            sim.step(Intent::default());
+            for (k, enemy) in sim.enemies[first..first + count].iter().enumerate() {
+                landed[k] |= enemy.on_ground && enemy.position.y > 0.0;
+            }
+        }
+        for (k, enemy) in sim.enemies[first..first + count].iter().enumerate() {
             assert!(
-                enemy.on_ground && enemy.position.y > 0.0,
+                landed[k],
                 "wave {wave}: {:?} at {}",
-                enemy.kind,
-                enemy.position
+                enemy.kind, enemy.position
             );
         }
         kill_wave(&mut sim);

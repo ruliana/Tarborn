@@ -2,17 +2,22 @@
 //! rate, and draws the result. All gameplay rules live in `tarborn_sim`.
 
 mod audio;
+mod camera;
 mod visuals;
+
+use std::path::PathBuf;
+use std::time::SystemTime;
 
 use bevy::app::RunFixedMainLoopSystems;
 use bevy::prelude::*;
+use camera::{CameraParams, CameraRig, Subject};
 use tarborn_sim::combat::SPIT_RADIUS;
 use tarborn_sim::enemy::{
     BRUTE_SLAM_RADIUS, BRUTE_WINDUP, GUARD_SWING_OFFSET, GUARD_SWING_RADIUS, SPIT_AIM,
 };
 use tarborn_sim::{
-    ARENA_SPAWN, AttackPhase, DT, Enemy, EnemyKind, Intent, Phase, Sim, State, TICKS_PER_SECOND,
-    TarModes,
+    ARENA_SPAWN, AttackPhase, DT, Enemy, EnemyKind, Event, Intent, Phase, Sim, State,
+    TICKS_PER_SECOND, TarModes,
 };
 use visuals::{Ink, Look, VisualTuning};
 
@@ -33,6 +38,8 @@ fn main() {
         .insert_resource(Time::<Fixed>::from_hz(TICKS_PER_SECOND as f64))
         .insert_resource(ClearColor(Color::srgb(0.07, 0.06, 0.08)))
         .insert_resource(Game::new(Room::Arena))
+        .insert_resource(CameraTuning::load())
+        .insert_resource(Rig(CameraRig::at(Room::Arena.spawn())))
         .init_resource::<InputLatch>()
         .add_plugins(audio::SoundPlugin)
         .add_plugins(visuals::VisualsPlugin)
@@ -44,7 +51,7 @@ fn main() {
             read_input.in_set(RunFixedMainLoopSystems::BeforeFixedMainLoop),
         )
         .add_systems(FixedUpdate, tick)
-        .add_systems(Update, (follow_camera, draw).chain())
+        .add_systems(Update, (reload_camera, follow_camera, draw).chain())
         .run();
 }
 
@@ -66,10 +73,10 @@ impl Room {
     }
 
     /// How far the camera zooms out: the arena shows most of the room.
-    fn zoom(self) -> f32 {
+    fn zoom(self, params: &CameraParams) -> f32 {
         match self {
-            Room::Arena => 1.6,
-            Room::Training => 1.0,
+            Room::Arena => params.zoom.arena,
+            Room::Training => params.zoom.training,
         }
     }
 }
@@ -84,6 +91,10 @@ struct Game {
     previous_enemies: Vec<Vec2>,
     /// Seconds since the player died; the room restarts after a moment.
     dead_for: f32,
+    /// Simulation events since the camera last looked, for screen shake.
+    events: Vec<Event>,
+    /// Just (re)started: the camera jumps to the spawn instead of gliding.
+    fresh: bool,
 }
 
 impl Game {
@@ -97,6 +108,8 @@ impl Game {
             previous: sim.blob.positions.clone(),
             previous_enemies: sim.enemies.iter().map(|e| e.position).collect(),
             dead_for: 0.0,
+            events: Vec::new(),
+            fresh: true,
             sim,
         }
     }
@@ -130,11 +143,11 @@ struct InputLatch {
     modes: TarModes,
 }
 
-fn spawn_camera(mut commands: Commands, game: Res<Game>) {
+fn spawn_camera(mut commands: Commands, game: Res<Game>, tuning: Res<CameraTuning>) {
     commands.spawn((
         Camera2d,
         Projection::Orthographic(OrthographicProjection {
-            scale: game.room.zoom(),
+            scale: game.room.zoom(&tuning.params),
             ..OrthographicProjection::default_2d()
         }),
         Transform::from_translation((game.room.spawn() * PIXELS_PER_METER).extend(0.0)),
@@ -247,25 +260,132 @@ fn tick(
         .extend(game.sim.enemies.iter().map(|e| e.position));
     let events = game.sim.step(intent);
     sound.observe(&game.sim, &events);
+    game.events.extend(events);
+}
+
+/// The camera rig's state between frames.
+#[derive(Resource)]
+struct Rig(CameraRig);
+
+/// Camera tuning, loaded from `camera.ron` (or `$TARBORN_CAMERA`) and
+/// reloaded whenever the file changes.
+#[derive(Resource)]
+struct CameraTuning {
+    params: CameraParams,
+    path: PathBuf,
+    modified: Option<SystemTime>,
+    check_in: f32,
+    /// Set by the C key; wins over the file's `effects` until restart.
+    effects_override: Option<bool>,
+}
+
+const CAMERA_FILE_CHECK: f32 = 0.5;
+
+impl CameraTuning {
+    fn load() -> Self {
+        let path = std::env::var_os("TARBORN_CAMERA")
+            .map(PathBuf::from)
+            .unwrap_or_else(|| PathBuf::from("camera.ron"));
+        let mut tuning = Self {
+            params: CameraParams::default(),
+            path,
+            modified: None,
+            check_in: 0.0,
+            effects_override: None,
+        };
+        tuning.refresh();
+        tuning
+    }
+
+    /// Re-reads the file if it changed. A broken file keeps the last good
+    /// tuning, so a typo mid-edit never wrecks the camera.
+    fn refresh(&mut self) {
+        let Ok(modified) = std::fs::metadata(&self.path).and_then(|m| m.modified()) else {
+            if self.modified.take().is_some() {
+                warn!(
+                    "{} is gone; keeping the current camera tuning",
+                    self.path.display()
+                );
+            }
+            return;
+        };
+        if self.modified == Some(modified) {
+            return;
+        }
+        self.modified = Some(modified);
+        match std::fs::read_to_string(&self.path)
+            .map_err(|e| e.to_string())
+            .and_then(|text| ron::from_str::<CameraParams>(&text).map_err(|e| e.to_string()))
+        {
+            Ok(params) => {
+                self.params = params;
+                if let Some(effects) = self.effects_override {
+                    self.params.effects = effects;
+                }
+                info!("camera tuning loaded from {}", self.path.display());
+            }
+            Err(e) => warn!("{}: {e}", self.path.display()),
+        }
+    }
+}
+
+fn reload_camera(
+    time: Res<Time>,
+    keys: Res<ButtonInput<KeyCode>>,
+    mut tuning: ResMut<CameraTuning>,
+) {
+    tuning.check_in -= time.delta_secs();
+    if tuning.check_in <= 0.0 {
+        tuning.check_in = CAMERA_FILE_CHECK;
+        tuning.refresh();
+    }
+    if keys.just_pressed(KeyCode::KeyC) {
+        tuning.params.effects = !tuning.params.effects;
+        tuning.effects_override = Some(tuning.params.effects);
+        info!(
+            "camera effects {}",
+            if tuning.params.effects { "on" } else { "off" }
+        );
+    }
 }
 
 fn follow_camera(
-    game: Res<Game>,
+    mut game: ResMut<Game>,
+    mut rig: ResMut<Rig>,
+    tuning: Res<CameraTuning>,
     fixed: Res<Time<Fixed>>,
     time: Res<Time>,
     camera: Single<(&mut Transform, &mut Projection), With<Camera2d>>,
 ) {
+    let params = &tuning.params;
     let (mut camera, mut projection) = camera.into_inner();
-    if let Projection::Orthographic(ortho) = &mut *projection
-        && ortho.scale != game.room.zoom()
-    {
-        ortho.scale = game.room.zoom();
-    }
     let outline = game.blob_outline(fixed.overstep_fraction());
-    let center = outline.iter().copied().sum::<Vec2>() / outline.len() as f32;
-    let target = center.extend(camera.translation.z);
-    let smoothing = 1.0 - (-6.0 * time.delta_secs()).exp();
-    camera.translation = camera.translation.lerp(target, smoothing);
+    let center = outline.iter().copied().sum::<Vec2>() / outline.len() as f32 / PIXELS_PER_METER;
+    if game.fresh {
+        game.fresh = false;
+        rig.0 = CameraRig::at(center);
+    }
+    for event in std::mem::take(&mut game.events) {
+        rig.0.react(&event, center, params);
+    }
+    let subject = Subject {
+        position: center,
+        // Frozen during hitstop, so the zoom doesn't react to the stop.
+        velocity: if game.sim.in_hitstop() || game.sim.dead {
+            Vec2::ZERO
+        } else {
+            game.sim.blob.velocity()
+        },
+        gripping: game.sim.controller.is_shrunk(),
+        base_zoom: game.room.zoom(params),
+    };
+    let pose = rig.0.update(subject, params, time.delta_secs());
+    if let Projection::Orthographic(ortho) = &mut *projection {
+        ortho.scale = pose.zoom;
+    }
+    let at = pose.center * PIXELS_PER_METER + pose.shake * pose.zoom;
+    camera.translation = at.extend(camera.translation.z);
+    camera.rotation = Quat::from_rotation_z(pose.angle);
 }
 
 /// The blob's state as a color, or `None` in its resting state. The line look
@@ -299,12 +419,13 @@ fn draw(
     latch: Res<InputLatch>,
     fixed: Res<Time<Fixed>>,
     time: Res<Time>,
-    camera: Single<&Transform, With<Camera2d>>,
+    camera: Single<(&Transform, &Projection), With<Camera2d>>,
     window: Single<&Window>,
     look: Res<Look>,
     tuning: Res<VisualTuning>,
     mut gizmos: Gizmos,
 ) {
+    let (camera, projection) = camera.into_inner();
     let alpha = fixed.overstep_fraction();
     let sim = &game.sim;
     let ink = Ink::new(*look, &tuning);
@@ -382,7 +503,10 @@ fn draw(
     }
 
     // The HUD is laid out in screen pixels, scaled by the zoom.
-    let zoom = game.room.zoom();
+    let zoom = match projection {
+        Projection::Orthographic(ortho) => ortho.scale,
+        _ => 1.0,
+    };
     let half = Vec2::new(window.width(), window.height()) * 0.5 * zoom;
     let view = camera.translation.truncate();
     // Health pips in the top-left corner of the screen.

@@ -54,6 +54,10 @@ pub struct FeelParams {
     /// Aim more downward than this (aim.y below -this) makes an air lunge a slam.
     pub slam_aim: f32,
     pub slam_speed: f32,
+    /// A lunge snaps toward a target within this distance...
+    pub aim_assist_range: f32,
+    /// ...and within this angle (radians) of where it was aimed.
+    pub aim_assist_angle: f32,
 }
 
 impl Default for FeelParams {
@@ -70,6 +74,8 @@ impl Default for FeelParams {
             lunge_buffer: 0.12,
             slam_aim: 0.5,
             slam_speed: 24.0,
+            aim_assist_range: 5.0,
+            aim_assist_angle: 30f32.to_radians(),
         }
     }
 }
@@ -116,6 +122,38 @@ pub enum Event {
     Bounced {
         normal: Vec2,
     },
+    /// The player hit enemy number `enemy`.
+    Hit {
+        enemy: usize,
+        kind: HitKind,
+        damage: f32,
+        at: Vec2,
+    },
+    Killed {
+        enemy: usize,
+        at: Vec2,
+    },
+    PlayerHurt {
+        health: u32,
+    },
+    PlayerDied,
+    Healed {
+        health: u32,
+    },
+}
+
+/// How the player hit something. Each has its own damage and rebound.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum HitKind {
+    Lunge,
+    /// A slam landing directly on an enemy.
+    Slam,
+    /// Caught in a slam's shockwave without being touched.
+    Shockwave,
+    /// Landing on an enemy with bouncy held.
+    Pogo,
+    /// Rolling or bouncing into an enemy fast.
+    Impact,
 }
 
 impl Controller {
@@ -161,7 +199,23 @@ impl Controller {
         self.lunge_cooldown_left = 0.0;
     }
 
-    pub fn step(&mut self, blob: &mut Blob, level: &Level, intent: Intent, dt: f32) -> Vec<Event> {
+    /// Ends any lunge or slam right away, e.g. when it hits something.
+    pub fn cancel_moves(&mut self, blob: &mut Blob) {
+        if self.is_lunging() {
+            self.end_lunge(blob, 1.0);
+        }
+        self.slamming = false;
+    }
+
+    /// Advances one tick. `targets` are points a lunge may snap toward.
+    pub fn step(
+        &mut self,
+        blob: &mut Blob,
+        level: &Level,
+        intent: Intent,
+        targets: &[Vec2],
+        dt: f32,
+    ) -> Vec<Event> {
         let mut events = Vec::new();
         let touching = blob.touching_count() > 0;
 
@@ -215,6 +269,7 @@ impl Controller {
                     };
                     direction = Vec2::new(side, 0.0);
                 }
+                direction = self.assist_aim(blob.center(), direction, targets, touching);
                 if direction.x.abs() > 0.1 {
                     self.facing = direction.x.signum();
                 }
@@ -283,6 +338,21 @@ impl Controller {
         self.lunge_buffer_left = (self.lunge_buffer_left - dt).max(0.0);
         self.lunge_cooldown_left = (self.lunge_cooldown_left - dt).max(0.0);
         events
+    }
+
+    /// Bends `direction` toward the closest target in the assist cone, so a
+    /// roughly aimed lunge still connects.
+    fn assist_aim(&self, from: Vec2, direction: Vec2, targets: &[Vec2], touching: bool) -> Vec2 {
+        let p = &self.params;
+        targets
+            .iter()
+            .map(|t| *t - from)
+            .filter(|d| d.length() <= p.aim_assist_range)
+            .filter_map(|d| d.try_normalize().map(|n| (d.length(), n)))
+            .filter(|(_, n)| n.angle_to(direction).abs() <= p.aim_assist_angle)
+            .filter(|(_, n)| !touching || n.y >= -0.05)
+            .min_by(|a, b| a.0.total_cmp(&b.0))
+            .map_or(direction, |(_, n)| n)
     }
 
     fn end_lunge(&mut self, blob: &mut Blob, keep: f32) {

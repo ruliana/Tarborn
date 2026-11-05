@@ -53,6 +53,19 @@ sudo apt install libasound2-dev libudev-dev libwayland-dev libxkbcommon-dev pkg-
 
 The blob flashes white while invulnerable.
 
+### Combat
+
+The test room has training dummies (purple circles) and a strip of spikes.
+
+- Your body is the weapon. A lunge always hits for a fixed amount, a slam
+  hits whatever it lands on and sends out a shockwave, landing on an enemy
+  with bouncy held pogoes off it, and hitting anything at high speed hurts it.
+- Every hit freezes the world for a moment, knocks the target back, and
+  refreshes your lunge, so hits chain in the air. Lunges snap toward an enemy
+  within 30° of where you aim.
+- You have 5 health. Getting hurt costs one and makes you blink, invulnerable
+  for a second. Kills drop tar (yellow) that heals one. At 0 the room restarts.
+
 ## How responsiveness is handled
 
 - Gameplay runs at a fixed 120 Hz tick, independent of the frame rate.

@@ -78,7 +78,7 @@ impl Default for BlobParams {
             air_accel: 14.0,
             friction: 0.3,
             grip_friction: 0.5,
-            bounce_friction: 0.05,
+            bounce_friction: 0.01,
             restitution: 0.85,
             min_bounce_speed: 3.0,
             grip_range: 0.15,

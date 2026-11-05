@@ -1,0 +1,15 @@
+[package]
+name = "tarborn"
+description = "Tarborn: a soft-body tar platformer."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+bevy.workspace = true
+tarborn_sim.workspace = true
+
+[features]
+# `cargo run --features dev` links Bevy dynamically for much faster rebuilds while iterating.
+dev = ["bevy/dynamic_linking"]

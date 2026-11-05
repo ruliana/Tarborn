@@ -41,6 +41,24 @@ The game reloads it while running: edit, save, and the change shows within
 half a second. A typo keeps the last good tuning and logs the error. Set
 `TARBORN_CAMERA=path/to/other.ron` to try an alternate tuning.
 
+## Level dressing
+
+The filled looks dress the level from its shape alone, so any room gets
+dressed without hand placement. The game reads the solids (a raster, a
+distance field, and the outline labelled as floor, slope, wall, ceiling,
+concave or convex arc, and outer or inner corners), then lays pieces on
+it: a body shader that colors solids by depth (trim band, seam, panels),
+strips along each kind of edge, corner pieces, a WFC fill deep inside,
+hanging parts that sway, and a parallax skyline.
+
+Which pieces, and every number about them, is a dressing set: one RON file
+per stage in [`crates/tarborn/assets/dressing/`](crates/tarborn/assets/dressing/)
+(`industrial.ron`, `forest.ron`). B cycles sets, and edits to a set file
+show within half a second. How the shape is read is under `dressing` in
+[`visuals.ron`](crates/tarborn/assets/visuals.ron). The **dressing room**
+(T cycles rooms) has a ramp, rounded corners, an arch and a dome to see
+every piece on.
+
 ## Controls
 
 Two buttons, plus the stick:
@@ -51,9 +69,10 @@ Two buttons, plus the stick:
 | Jump    | Space or J             | South (A / Cross)               |
 | Grip    | K or Left Shift (hold) | Either trigger, or West (X / Square) |
 | Restart | R                      |                                 |
-| Switch room (arena / training) | T |                          |
+| Switch room (arena / training / dressing) | T |               |
 | Mute    | M                      |                                 |
 | Cycle look (lines / Pitch / dithered) | V |                    |
+| Cycle level dressing (industrial / forest) | B |               |
 | Camera effects on/off (A/B) | C |                            |
 
 Two verbs: **Grip shrinks**, **Jump expands**.
@@ -107,7 +126,8 @@ by brutes. Kills drop tar that heals. Dying restarts the arena.
   the small grey number is your best chain.
 
 Press T to switch to the **training room**, which has one of each enemy (they
-respawn) and some terrain to try moves on.
+respawn) and some terrain to try moves on. Press it again for the **dressing
+room** (slopes and arcs, a grub and a guard), and again to return to the arena.
 
 ### Combat
 

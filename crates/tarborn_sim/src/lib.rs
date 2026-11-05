@@ -149,6 +149,14 @@ impl Sim {
         sim
     }
 
+    /// The dressing test room: slopes and arcs, a grub and a guard.
+    pub fn dressing_room(spawn: Vec2) -> Self {
+        let v = Vec2::new;
+        let mut sim = Self::new(Level::dressing_room(), spawn);
+        sim.enemies = vec![Enemy::grub(v(-6.0, 0.35)), Enemy::guard(v(11.0, 3.1))];
+        sim
+    }
+
     /// The arena room: waves of every enemy kind.
     pub fn arena_room() -> Self {
         let mut sim = Self::new(Level::arena(), ARENA_SPAWN);

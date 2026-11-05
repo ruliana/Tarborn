@@ -1,7 +1,8 @@
 //! The look: filled geometry, a glossy tar shader, generated level dressing
-//! and a full-screen finish. V cycles between looks so they can be compared
+//! (see [`dressing`]) and a full-screen finish. V cycles between looks so they can be compared
 //! in play. Every number comes from `visuals.ron` (see [`tuning`]).
 
+mod dressing;
 mod fill;
 mod tuning;
 pub mod wfc;
@@ -44,6 +45,7 @@ impl Plugin for VisualsPlugin {
         app.add_plugins((
             Material2dPlugin::<TarMaterial>::default(),
             FullscreenMaterialPlugin::<PostEffect>::default(),
+            dressing::DressingPlugin,
         ))
         .init_resource::<VisualTuning>()
         .init_resource::<Look>()
@@ -54,6 +56,7 @@ impl Plugin for VisualsPlugin {
                 tuning::reload,
                 cycle_look,
                 apply_look,
+                dressing::systems(),
                 build_level,
                 build_actors,
                 update_tar,
@@ -167,12 +170,11 @@ fn apply_look(
     if !look.is_changed() && !tuning.is_changed() {
         return;
     }
+    // The filled looks take the background from the dressing set.
     let lines = *lines_clear.get_or_insert(clear.0);
-    clear.0 = if look.filled() {
-        srgb(tuning.background)
-    } else {
-        lines
-    };
+    if !look.filled() {
+        clear.0 = lines;
+    }
     for mut visibility in &mut layers {
         *visibility = if look.filled() {
             Visibility::Inherited
@@ -226,136 +228,10 @@ fn build_level(
     built.tuning = Some(tuning.clone());
 }
 
-fn inside_convex(poly: &[Vec2], p: Vec2, margin: f32) -> bool {
-    (0..poly.len()).all(|i| {
-        let a = poly[i];
-        let b = poly[(i + 1) % poly.len()];
-        // Counter-clockwise: inside is to the left of every edge.
-        (b - a).normalize().perp_dot(p - a) >= margin
-    })
-}
-
-/// Whether some solid lies within `max_drop` pixels straight below `p`, so a
-/// drip there hangs over open space inside the room rather than outside it.
-fn has_floor_below(solids: &[Vec<Vec2>], p: Vec2, max_drop: f32) -> bool {
-    let start = p - Vec2::Y * 1.0;
-    solids.iter().any(|poly| {
-        let (lo, hi) = poly.iter().fold((Vec2::MAX, Vec2::MIN), |(lo, hi), v| {
-            (lo.min(*v), hi.max(*v))
-        });
-        lo.x <= p.x && p.x <= hi.x && hi.y < start.y && start.y - hi.y <= max_drop
-    })
-}
-
+/// The spikes; the solids themselves are drawn by the dressing.
 fn level_fill(sim: &Sim, tuning: &VisualTuning) -> Fill {
     let look = &tuning.level;
     let mut fill = Fill::default();
-    let solids: Vec<Vec<Vec2>> = sim
-        .level
-        .solids
-        .iter()
-        .map(|s| s.vertices.iter().map(|v| *v * PIXELS_PER_METER).collect())
-        .collect();
-    let solid = srgb(look.solid);
-    for poly in &solids {
-        fill.polygon(poly, solid);
-    }
-
-    // Girders: WFC over a grid of cells that sit wholly inside some solid.
-    let (min, max) = solids
-        .iter()
-        .flatten()
-        .fold((Vec2::MAX, Vec2::MIN), |(lo, hi), v| {
-            (lo.min(*v), hi.max(*v))
-        });
-    let cell = look.cell_size.max(2.0);
-    let width = ((max.x - min.x) / cell).ceil().max(1.0) as usize;
-    let height = ((max.y - min.y) / cell).ceil().max(1.0) as usize;
-    let center = |x: usize, y: usize| min + (Vec2::new(x as f32, y as f32) + 0.5) * cell;
-    let mut inside = vec![false; width * height];
-    for y in 0..height {
-        for x in 0..width {
-            let c = center(x, y);
-            let h = cell * 0.5;
-            let corners = [
-                c + Vec2::new(-h, -h),
-                c + Vec2::new(h, -h),
-                c + Vec2::new(h, h),
-                c + Vec2::new(-h, h),
-            ];
-            // Every corner must sit in the same solid, so girders never cross a gap.
-            inside[y * width + x] = solids.iter().any(|poly| {
-                corners
-                    .iter()
-                    .all(|&k| inside_convex(poly, k, look.cell_margin))
-            });
-        }
-    }
-    let grid = wfc::Grid {
-        width,
-        height,
-        inside,
-    };
-    let mut rng = wfc::Rng::new(look.seed);
-    let tiles = wfc::collapse(&grid, &look.weights, &mut rng);
-    let strut = srgb(look.strut);
-    let rivet = srgb(look.rivet);
-    for y in 0..height {
-        for x in 0..width {
-            let Some(tile) = tiles[y * width + x] else {
-                continue;
-            };
-            let c = center(x, y);
-            for (bit, dir) in [
-                (wfc::N, Vec2::Y),
-                (wfc::E, Vec2::X),
-                (wfc::S, Vec2::NEG_Y),
-                (wfc::W, Vec2::NEG_X),
-            ] {
-                if tile & bit != 0 {
-                    // Overlap the centre a little so joints look solid.
-                    let from = c - dir * look.strut_width * 0.5;
-                    fill.segment(from, c + dir * cell * 0.5, look.strut_width, strut);
-                }
-            }
-            if tile == 0 && rng.next_f32() < look.rivet_chance {
-                fill.rect(c, Vec2::splat(look.rivet_size), rivet);
-            }
-        }
-    }
-
-    // Lips on floor-like edges, drips under ceiling-like ones.
-    let edge = srgb(look.edge);
-    let drip = srgb(tuning.tar.body);
-    for poly in &solids {
-        for i in 0..poly.len() {
-            let a = poly[i];
-            let b = poly[(i + 1) % poly.len()];
-            let along = b - a;
-            let normal = Vec2::new(along.y, -along.x).normalize_or_zero();
-            if normal.y >= look.edge_min_up {
-                fill.segment(
-                    a - normal * look.edge_width * 0.5,
-                    b - normal * look.edge_width * 0.5,
-                    look.edge_width,
-                    edge,
-                );
-            } else if normal.y <= -look.edge_min_up
-                && has_floor_below(&solids, (a + b) * 0.5, look.drip_max_drop)
-            {
-                let count = (along.length() / 100.0 * look.drips_per_100px).round() as usize;
-                for _ in 0..count {
-                    let at = a + along * (0.05 + 0.9 * rng.next_f32());
-                    let (lo, hi) = look.drip_length;
-                    let length = lo + (hi - lo) * rng.next_f32();
-                    let tip = at + Vec2::NEG_Y * length;
-                    fill.segment(at, tip, look.drip_width, drip);
-                    fill.circle(tip, look.drip_bulb, 10, drip);
-                }
-            }
-        }
-    }
-
     // Spikes as filled teeth.
     let hazard = srgb(look.hazard);
     for spikes in &sim.hazards {

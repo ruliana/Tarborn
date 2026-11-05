@@ -62,13 +62,15 @@ enum Room {
     Arena,
     /// One of each enemy and some terrain, to try things out.
     Training,
+    /// Slopes, arcs, an arch and ledges, to see the level dressing on.
+    Dressing,
 }
 
 impl Room {
     fn spawn(self) -> Vec2 {
         match self {
             Room::Arena => ARENA_SPAWN,
-            Room::Training => SPAWN,
+            Room::Training | Room::Dressing => SPAWN,
         }
     }
 
@@ -76,7 +78,7 @@ impl Room {
     fn zoom(self, params: &CameraParams) -> f32 {
         match self {
             Room::Arena => params.zoom.arena,
-            Room::Training => params.zoom.training,
+            Room::Training | Room::Dressing => params.zoom.training,
         }
     }
 }
@@ -102,6 +104,7 @@ impl Game {
         let sim = match room {
             Room::Arena => Sim::arena_room(),
             Room::Training => Sim::training_room(SPAWN),
+            Room::Dressing => Sim::dressing_room(SPAWN),
         };
         Self {
             room,
@@ -226,7 +229,8 @@ fn read_input(
     if keys.just_pressed(KeyCode::KeyT) {
         let other = match game.room {
             Room::Arena => Room::Training,
-            Room::Training => Room::Arena,
+            Room::Training => Room::Dressing,
+            Room::Dressing => Room::Arena,
         };
         *game = Game::new(other);
     }

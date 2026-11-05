@@ -97,7 +97,6 @@ pub(crate) fn resolve(sim: &mut Sim, intent: Intent, events: &mut Vec<Event>) {
         })
         .collect();
 
-    sim.noises = noises(sim, modes, events);
     perceive_and_think(sim);
     for enemy in &mut sim.enemies {
         enemy.step(&sim.level, DT);
@@ -272,35 +271,17 @@ fn apply_hit(
     false
 }
 
-/// How far each kind of player action can be heard. Sticky movement makes
-/// no noise at all, so crawling is the way to sneak up on things.
-fn noises(sim: &Sim, modes: TarModes, events: &[Event]) -> Vec<(Vec2, f32)> {
-    let at = sim.blob.center();
-    let mut out: Vec<(Vec2, f32)> = events
-        .iter()
-        .filter_map(|e| {
-            let radius = match e {
-                Event::Jumped { .. } => 3.0,
-                Event::Lunged { .. } => 4.0,
-                Event::Launched { .. } => 5.0,
-                Event::Bounced { .. } => 7.0,
-                Event::Hit { .. } | Event::Blocked { .. } | Event::Struck { .. } => 8.0,
-                Event::Thrown { .. } => 5.0,
-                Event::Slammed { .. } => 10.0,
-                _ => return None,
-            };
-            Some((at, radius))
-        })
-        .collect();
-    let rolling_fast = sim.blob.touching_count() > 0 && sim.blob.velocity().length() > 5.0;
-    if rolling_fast && !modes.sticky {
-        out.push((at, 3.0));
-    }
-    out
+/// Enemies see by line of sight only: anything on screen with no terrain in
+/// the way. The screen is centred on the player, so an enemy is on screen
+/// when it is within the view's half-size of them.
+fn in_view(view: Vec2, a: Vec2, b: Vec2) -> bool {
+    let offset = (a - b).abs();
+    offset.x < view.x && offset.y < view.y
 }
 
 fn perceive_and_think(sim: &mut Sim) {
     let player = sim.blob.center();
+    let view = sim.view;
     // Where everyone is, before anyone moves.
     let bodies: Vec<(EnemyKind, Vec2, bool)> = sim
         .enemies
@@ -323,36 +304,19 @@ fn perceive_and_think(sim: &mut Sim) {
                 })
         };
         let prey = closest(&|kind, at| {
-            let offset = at - enemy.position;
             enemy.kind.hunts(kind)
-                && offset.x * enemy.facing > -0.3
-                && offset.length() < enemy.kind.sight_range()
-                && offset.y.abs() < 2.5
+                && in_view(view, at, enemy.position)
                 && line_of_sight(&sim.level, enemy.position, at)
         });
         let threat = closest(&|kind, at| {
             enemy.kind.fears(kind) && at.distance(enemy.position) < FEAR_DISTANCE
         });
-        let offset = player - enemy.position;
-        let in_front = offset.x * enemy.facing > -0.3;
         let sees_player = !sim.dead
-            && in_front
-            && offset.length() < enemy.kind.sight_range()
-            && offset.y.abs() < 2.5
+            && in_view(view, player, enemy.position)
             && line_of_sight(&sim.level, enemy.position, player);
-        let heard = sim
-            .noises
-            .iter()
-            .filter(|(at, radius)| at.distance(enemy.position) <= *radius)
-            .map(|(at, _)| *at)
-            .min_by(|a, b| {
-                a.distance(enemy.position)
-                    .total_cmp(&b.distance(enemy.position))
-            });
         let senses = Senses {
             player,
             sees_player,
-            heard,
             prey,
             threat,
         };
@@ -403,15 +367,9 @@ fn enemy_attacks(sim: &mut Sim, events: &mut Vec<Event>) {
             .positions
             .iter()
             .any(|q| q.distance(center) < reach);
-        if hit && sim.player_shrunk() {
-            sim.enemies[i].struck = true;
-            events.push(Event::Dodged {
-                at: sim.blob.center(),
-            });
-        } else if hit && !sim.player_invulnerable() {
-            sim.enemies[i].struck = true;
+        if hit {
             let away = sim.enemies[i].facing;
-            hurt_player(sim, away, events);
+            sim.enemies[i].struck |= dodge_or_hurt(sim, away, events);
         }
     }
 }
@@ -447,9 +405,8 @@ fn pounce(sim: &mut Sim, i: usize, events: &mut Vec<Event>) {
     }
     let reach = radius + sim.blob.params.point_radius + sim.combat.hit_reach;
     let hit = sim.blob.positions.iter().any(|q| q.distance(at) < reach);
-    if hit && !sim.player_invulnerable() {
-        sim.enemies[i].struck = true;
-        hurt_player(sim, facing, events);
+    if hit {
+        sim.enemies[i].struck |= dodge_or_hurt(sim, facing, events);
     }
 }
 
@@ -487,7 +444,7 @@ fn quake(sim: &mut Sim, i: usize, events: &mut Vec<Event>) {
     let grounded = sim.blob.touching_count() > 0;
     if grounded && center.distance(at) < BRUTE_SLAM_RADIUS + sim.blob.params.radius {
         let away = if center.x >= at.x { 1.0 } else { -1.0 };
-        hurt_player(sim, away, events);
+        dodge_or_hurt(sim, away, events);
     }
 }
 
@@ -565,6 +522,22 @@ fn hazards(sim: &mut Sim, events: &mut Vec<Event>) {
         -1.0
     };
     hurt_player(sim, away, events);
+}
+
+/// An attack reaches the player: a shrinking blob dodges it, anything else
+/// that isn't invulnerable gets hurt. Returns true if the attack is spent.
+fn dodge_or_hurt(sim: &mut Sim, away: f32, events: &mut Vec<Event>) -> bool {
+    if sim.controller.is_dodging() {
+        events.push(Event::Dodged {
+            at: sim.blob.center(),
+        });
+        true
+    } else if sim.player_invulnerable() {
+        false
+    } else {
+        hurt_player(sim, away, events);
+        true
+    }
 }
 
 /// Takes one health pip and knocks the player toward `away` (-1 or 1).
@@ -669,7 +642,8 @@ fn move_projectiles(sim: &mut Sim, events: &mut Vec<Event>) {
         let reach = SPIT_RADIUS + sim.blob.params.point_radius;
         let touching = sim.blob.center().distance(at) < sim.blob.params.radius
             || sim.blob.positions.iter().any(|q| q.distance(at) < reach);
-        if touching && sim.player_shrunk() {
+        if touching && sim.controller.is_dodging() {
+            // Passes straight through a shrinking blob.
             if !sim.projectiles[i].dodged {
                 sim.projectiles[i].dodged = true;
                 events.push(Event::Dodged { at });

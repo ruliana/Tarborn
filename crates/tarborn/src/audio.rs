@@ -109,7 +109,7 @@ impl CueTracker {
     pub fn observe(&mut self, sim: &Sim, events: &[Event], p: &CueParams) {
         let blob = &sim.blob;
         let center = blob.center();
-        let shrunk = sim.player_shrunk();
+        let shrunk = sim.controller.is_shrunk();
         let touching = blob.touching_count() > 0;
         let on_wall = shrunk
             && blob

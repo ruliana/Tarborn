@@ -1,6 +1,7 @@
-//! The spitter (ranged enemy) and dodging by shrinking.
+//! The spitter (ranged enemy), and dodging by shrinking at the right moment.
 
 use glam::Vec2;
+use tarborn_sim::enemy::GUARD_WINDUP;
 use tarborn_sim::{
     AttackPhase, DT, Enemy, Event, HitKind, Intent, Level, Sim, Solid, State, TarModes,
 };
@@ -63,24 +64,30 @@ fn a_spitter_aims_then_shoots_the_player() {
     assert!(warning > 0.9, "only {warning}s from aiming to being hit");
 }
 
-#[test]
-fn shrinking_makes_spit_miss() {
-    let mut sim = with_spitter(7.0);
-    // Wait until it fires, holding Grip: the blob stays shrunk.
-    while sim.projectiles.is_empty() {
-        sim.step(Intent {
-            modes: STICKY,
-            ..Default::default()
-        });
+fn grip() -> Intent {
+    Intent {
+        modes: STICKY,
+        ..Default::default()
     }
-    let events = run(
-        &mut sim,
-        Intent {
-            modes: STICKY,
-            ..Default::default()
-        },
-        0.7,
-    );
+}
+
+/// Waits (full size) until the spit is about to land.
+fn until_spit_is_close(sim: &mut Sim) {
+    loop {
+        sim.step(Intent::default());
+        if let Some(shot) = sim.projectiles.first()
+            && shot.position.distance(sim.blob.center()) < 1.3
+        {
+            return;
+        }
+    }
+}
+
+#[test]
+fn shrinking_just_as_the_spit_arrives_dodges_it() {
+    let mut sim = with_spitter(7.0);
+    until_spit_is_close(&mut sim);
+    let events = run(&mut sim, grip(), 0.7);
     assert!(
         events.iter().any(|e| matches!(e, Event::Dodged { .. })),
         "{events:?}"
@@ -89,7 +96,27 @@ fn shrinking_makes_spit_miss() {
 }
 
 #[test]
-fn shrinking_makes_a_guard_swing_miss() {
+fn staying_small_does_not_dodge() {
+    // The dodge is the moment of shrinking, not being small.
+    let mut sim = with_spitter(7.0);
+    let events = run(&mut sim, grip(), 3.0);
+    assert!(hurt(&events), "{events:?}");
+}
+
+#[test]
+fn shrinking_again_right_away_does_not_dodge() {
+    let mut sim = with_spitter(7.0);
+    until_spit_is_close(&mut sim);
+    // Tap Grip a moment too early, then again as the spit lands: the second
+    // shrink comes too soon after the first to dodge.
+    sim.step(grip());
+    sim.step(Intent::default());
+    let events = run(&mut sim, grip(), 0.7);
+    assert!(hurt(&events), "{events:?}");
+}
+
+#[test]
+fn shrinking_as_a_guard_swings_dodges_it() {
     let mut sim = Sim::new(flat_floor(), v(0.0, 0.6));
     run(&mut sim, Intent::default(), 1.0);
     let mut guard = Enemy::guard(v(1.6, 0.6));
@@ -97,14 +124,12 @@ fn shrinking_makes_a_guard_swing_miss() {
     guard.state = State::Defending;
     guard.target = Some(sim.blob.center());
     sim.enemies.push(guard);
-    let events = run(
-        &mut sim,
-        Intent {
-            modes: STICKY,
-            ..Default::default()
-        },
-        1.2,
-    );
+    while !(sim.enemies[0].state == State::Attacking(AttackPhase::Windup)
+        && sim.enemies[0].state_time > GUARD_WINDUP - 0.05)
+    {
+        sim.step(Intent::default());
+    }
+    let events = run(&mut sim, grip(), 0.5);
     assert!(
         events.iter().any(|e| matches!(e, Event::Dodged { .. })),
         "{events:?}"
@@ -113,24 +138,12 @@ fn shrinking_makes_a_guard_swing_miss() {
 }
 
 #[test]
-fn shrink_dodge_then_launch_into_the_opening() {
+fn shrink_dodge_then_burst_into_the_opening() {
     // The combo: shrink under the shot, then expand (Jump) to burst at the
     // spitter while it recovers, for double damage.
     let mut sim = with_spitter(4.5);
-    while sim.projectiles.is_empty() {
-        sim.step(Intent {
-            modes: STICKY,
-            ..Default::default()
-        });
-    }
-    run(
-        &mut sim,
-        Intent {
-            modes: STICKY,
-            ..Default::default()
-        },
-        0.4,
-    );
+    until_spit_is_close(&mut sim);
+    run(&mut sim, grip(), 0.3);
     assert_eq!(sim.enemies[0].state, State::Attacking(AttackPhase::Recover));
     let toward = (sim.enemies[0].position - sim.blob.center()).normalize();
     let mut events = sim.step(Intent {
@@ -144,13 +157,7 @@ fn shrink_dodge_then_launch_into_the_opening() {
         Event::Hit { kind, damage, .. } => Some((*kind, *damage)),
         _ => None,
     });
-    let (kind, damage) = hit.unwrap_or_else(|| {
-        panic!(
-            "the burst missed: {events:?} {:?} {:?}",
-            sim.blob.center(),
-            sim.enemies[0].position
-        )
-    });
+    let (kind, damage) = hit.unwrap_or_else(|| panic!("the burst missed: {events:?}"));
     assert_eq!(kind, HitKind::Lunge, "{events:?}");
     let base = sim.combat.lunge_damage;
     assert!(damage >= base * 2.0, "no recovery bonus: {damage}");

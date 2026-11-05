@@ -434,3 +434,50 @@ fn sticky_rolling_climbs_out_of_a_floor_wall_corner() {
     let c = sim.blob.center();
     assert!(c.y > 2.5, "wedged in the corner at {c}");
 }
+
+#[test]
+fn sticky_rolling_climbs_out_of_a_corner_from_any_run_up() {
+    // Hitting the wall at speed presses the blob flat against it; it must
+    // still be able to roll up, wherever the run-up started.
+    let mut stuck = Vec::new();
+    for k in 0..20 {
+        let x = 1.0 + k as f32 * 0.17;
+        let level = Level {
+            solids: vec![
+                Solid::rect(v(-50.0, -2.0), v(50.0, 0.0)),
+                Solid::rect(v(5.0, -2.0), v(6.0, 50.0)),
+            ],
+        };
+        let mut sim = Sim::new(level, v(x, 0.6));
+        run(&mut sim, idle(), 1.0);
+        run(
+            &mut sim,
+            Intent {
+                roll: 1.0,
+                ..with_modes(STICKY)
+            },
+            2.5,
+        );
+        if sim.blob.center().y < 2.5 {
+            stuck.push(x);
+        }
+    }
+    assert!(stuck.is_empty(), "wedged starting from {stuck:?}");
+}
+
+#[test]
+fn sticky_rolling_crawls_along_a_ceiling() {
+    let mut sim = Sim::new(ceiling(), v(0.0, -0.52));
+    run(&mut sim, with_modes(STICKY), 0.5);
+    run(
+        &mut sim,
+        Intent {
+            roll: 1.0,
+            ..with_modes(STICKY)
+        },
+        1.5,
+    );
+    let c = sim.blob.center();
+    assert!(c.y > -1.0, "fell off the ceiling: {c}");
+    assert!(c.x.abs() > 1.0, "didn't move along it: {c}");
+}

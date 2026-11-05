@@ -111,6 +111,10 @@ pub struct Blob {
     unstick_left: f32,
 }
 
+/// Contact points further behind the centre than this share of the radius,
+/// along the way the blob rolls, let go of the surface.
+const PEEL: f32 = 0.2;
+
 impl Blob {
     pub fn new(center: Vec2, params: BlobParams) -> Self {
         let n = params.point_count;
@@ -230,6 +234,15 @@ impl Blob {
             {
                 let travel = Vec2::new(normal.y, -normal.x) * roll.signum();
                 if self.contacts.iter().flatten().any(|m| m.dot(travel) < -0.5) {
+                    self.held[i] = None;
+                }
+                // Peel off the trailing edge of the contact patch, so a blob
+                // pressed flat against a surface can still roll along it. Not
+                // when rolling downward or hanging from a ceiling: there the
+                // trailing edge is what holds the blob up.
+                let trailing = (self.positions[i] - center).dot(travel);
+                let hanging = normal.y < -0.5 || travel.y < -0.5;
+                if !hanging && trailing < -PEEL * p.radius * self.scale {
                     self.held[i] = None;
                 }
             }

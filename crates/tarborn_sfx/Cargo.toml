@@ -1,0 +1,11 @@
+[package]
+name = "tarborn_sfx"
+description = "Procedural, parameter-driven sound effect synthesis for Tarborn. Engine-free."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+ron = "0.12.3"
+serde = { version = "1.0.229", features = ["derive"] }

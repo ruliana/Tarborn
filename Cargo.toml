@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["crates/tarborn_sim", "crates/tarborn"]
+members = ["crates/tarborn_sim", "crates/tarborn_sfx", "crates/tarborn"]
 
 [workspace.package]
 version = "0.1.0"
@@ -13,6 +13,7 @@ rust-version = "1.97.1"
 glam = "0.33"
 bevy = { version = "0.20.1", default-features = false, features = ["2d", "audio"] }
 tarborn_sim = { path = "crates/tarborn_sim" }
+tarborn_sfx = { path = "crates/tarborn_sfx" }
 
 # Bevy is unusably slow at opt-level 0. Optimise our code a little and dependencies fully.
 [profile.dev]

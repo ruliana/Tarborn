@@ -20,6 +20,9 @@ pub enum EnemyKind {
     /// Patrols. Blocks hits from the front with a shield and swings at you
     /// up close after a visible wind-up.
     Guard,
+    /// Keeps its distance and spits tar at you after aiming. Wide open while
+    /// it recovers from a shot.
+    Spitter,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -102,6 +105,8 @@ pub struct Enemy {
     walk: f32,
     /// How long the player has been behind it while it is alert.
     turn_wait: f32,
+    /// Set for one tick when it fires: the direction of the shot.
+    pub fire: Option<Vec2>,
 }
 
 /// Per-kind numbers.
@@ -137,6 +142,13 @@ impl EnemyKind {
                 run_speed: 3.0,
                 respawn: 5.0,
             },
+            EnemyKind::Spitter => Stats {
+                radius: 0.45,
+                health: 40.0,
+                walk_speed: 1.0,
+                run_speed: 2.5,
+                respawn: 5.0,
+            },
         }
     }
 
@@ -146,6 +158,7 @@ impl EnemyKind {
             EnemyKind::Dummy => 0.0,
             EnemyKind::Grub => 4.0,
             EnemyKind::Guard => 8.0,
+            EnemyKind::Spitter => 10.0,
         }
     }
 }
@@ -175,6 +188,13 @@ const REACTION_TIME: f32 = 0.3;
 const TURN_TIME: f32 = 0.4;
 /// Spotting the player closer than this startles an unaware enemy.
 const STARTLE_DISTANCE: f32 = 3.0;
+pub const SPIT_AIM: f32 = 0.6;
+const SPIT_RECOVER: f32 = 0.8;
+/// A spitter backs away from a player closer than this.
+const SPIT_COMFORT: f32 = 3.0;
+const BACK_OFF_TIME: f32 = 1.2;
+/// An unaware spitter looks the other way this often.
+const LOOK_AROUND: f32 = 2.5;
 
 impl Enemy {
     pub fn new(kind: EnemyKind, position: Vec2) -> Self {
@@ -198,11 +218,16 @@ impl Enemy {
             struck: false,
             walk: 0.0,
             turn_wait: 0.0,
+            fire: None,
         }
     }
 
     pub fn dummy(position: Vec2) -> Self {
         Self::new(EnemyKind::Dummy, position)
+    }
+
+    pub fn spitter(position: Vec2) -> Self {
+        Self::new(EnemyKind::Spitter, position)
     }
 
     pub fn grub(position: Vec2) -> Self {
@@ -283,6 +308,15 @@ impl Enemy {
                 _ if from_above => (1.0, State::Dizzy),
                 _ => (1.0, State::Defending),
             },
+            EnemyKind::Spitter => match self.state {
+                State::Unaware | State::Surprised => (3.0, State::Surprised),
+                State::Suspicious if self.state_time < REACTION_TIME => (3.0, State::Surprised),
+                State::Attacking(AttackPhase::Recover) => (2.0, State::Fleeing),
+                State::Dizzy | State::Prone if from_above => (2.0, State::Prone),
+                State::Dizzy | State::Prone => (2.0, self.state),
+                _ if from_above => (1.0, State::Dizzy),
+                _ => (1.0, State::Fleeing),
+            },
         };
 
         let damage = damage * multiplier;
@@ -327,6 +361,7 @@ impl Enemy {
             EnemyKind::Dummy => {}
             EnemyKind::Grub => self.think_grub(senses),
             EnemyKind::Guard => self.think_guard(senses, dt),
+            EnemyKind::Spitter => self.think_spitter(senses),
         }
         // Don't walk off ledges or into walls.
         if self.walk != 0.0 && !self.can_walk(level, self.walk.signum()) {
@@ -452,6 +487,101 @@ impl Enemy {
                     }
                 }
                 if t > SEARCH_TIME {
+                    self.target = None;
+                    self.set_state(State::Unaware);
+                }
+            }
+            _ => {}
+        }
+    }
+
+    fn think_spitter(&mut self, senses: Senses) {
+        let stats = self.kind.stats();
+        let t = self.state_time;
+        let close = senses.player.distance(self.position) < SPIT_COMFORT;
+        let attack_or_back_off = |e: &mut Self| {
+            e.set_state(if close {
+                State::Fleeing
+            } else {
+                State::Attacking(AttackPhase::Windup)
+            });
+        };
+        match self.state {
+            State::Unaware => {
+                if t > LOOK_AROUND {
+                    self.facing = -self.facing;
+                    self.state_time = 0.0;
+                }
+                if senses.sees_player {
+                    if close {
+                        self.set_state(State::Surprised);
+                    } else {
+                        self.set_state(State::Attacking(AttackPhase::Windup));
+                    }
+                } else if let Some(noise) = senses.heard {
+                    self.target = Some(noise);
+                    self.set_state(State::Suspicious);
+                }
+            }
+            State::Suspicious => {
+                if let Some(noise) = senses.heard {
+                    self.target = Some(noise);
+                }
+                if let Some(target) = self.target
+                    && t > REACTION_TIME
+                {
+                    self.face(target);
+                }
+                if senses.sees_player {
+                    attack_or_back_off(self);
+                } else if t > SUSPICIOUS_TIME {
+                    self.target = None;
+                    self.set_state(State::Unaware);
+                }
+            }
+            State::Surprised if t > SURPRISE_TIME => self.set_state(State::Fleeing),
+            State::Dizzy if t > DIZZY_TIME => self.set_state(State::Fleeing),
+            State::Prone if t > PRONE_TIME => self.set_state(State::Dizzy),
+            State::Fleeing => {
+                // Back away while still facing the player.
+                if let Some(target) = self.target {
+                    self.face(target);
+                    self.walk = -self.facing * stats.run_speed;
+                }
+                if t > BACK_OFF_TIME || !close && t > 0.3 {
+                    if senses.sees_player {
+                        self.set_state(State::Attacking(AttackPhase::Windup));
+                    } else {
+                        self.set_state(State::Searching);
+                    }
+                }
+            }
+            State::Attacking(AttackPhase::Windup) => {
+                if let Some(target) = self.target {
+                    self.face(target);
+                    if t > SPIT_AIM {
+                        self.fire = (target - self.position).try_normalize();
+                        self.set_state(State::Attacking(AttackPhase::Strike));
+                    }
+                }
+            }
+            State::Attacking(AttackPhase::Strike) if t > 0.05 => {
+                self.set_state(State::Attacking(AttackPhase::Recover));
+            }
+            State::Attacking(AttackPhase::Recover) if t > SPIT_RECOVER => {
+                if senses.sees_player {
+                    attack_or_back_off(self);
+                } else {
+                    self.set_state(State::Searching);
+                }
+            }
+            State::Searching => {
+                if let Some(target) = self.target {
+                    self.face(target);
+                }
+                if senses.sees_player {
+                    attack_or_back_off(self);
+                } else if t > SEARCH_TIME {
                     self.target = None;
                     self.set_state(State::Unaware);
                 }

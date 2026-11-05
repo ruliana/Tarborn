@@ -11,7 +11,7 @@ pub mod enemy;
 pub mod level;
 
 pub use blob::{Blob, BlobParams, TarModes};
-pub use combat::CombatParams;
+pub use combat::{CombatParams, Projectile};
 pub use controller::{Controller, Event, FeelParams, HitKind, Intent};
 pub use enemy::{AttackPhase, Enemy, EnemyKind, State};
 pub use level::{Level, Solid};
@@ -35,6 +35,8 @@ pub struct Sim {
     pub hazards: Vec<Solid>,
     /// Tar drops that heal one health pip.
     pub pickups: Vec<Vec2>,
+    /// Enemy shots in flight.
+    pub projectiles: Vec<Projectile>,
     /// Noises the player made last tick: where, and how far they carry.
     pub noises: Vec<(Vec2, f32)>,
     pub health: u32,
@@ -61,6 +63,7 @@ impl Sim {
             hazards: Vec::new(),
             pickups: Vec::new(),
             noises: Vec::new(),
+            projectiles: Vec::new(),
             health: combat.max_health,
             max_health: combat.max_health,
             combat,
@@ -73,7 +76,7 @@ impl Sim {
         }
     }
 
-    /// The test room with a dummy, grubs, guards and a strip of spikes.
+    /// The test room with a dummy, grubs, guards, a spitter and spikes.
     pub fn training_room(spawn: Vec2) -> Self {
         let v = Vec2::new;
         let mut sim = Self::new(Level::test_room(), spawn);
@@ -83,6 +86,7 @@ impl Sim {
             Enemy::dummy(v(6.0, 0.6)),
             Enemy::guard(v(16.0, 4.6)),
             Enemy::grub(v(2.5, 0.35)),
+            Enemy::spitter(v(-10.5, 5.95)),
         ];
         sim.hazards = vec![Solid::rect(v(-19.0, 0.0), v(-15.0, 0.3))];
         sim
@@ -91,6 +95,12 @@ impl Sim {
     /// True while frozen by a hit.
     pub fn in_hitstop(&self) -> bool {
         self.hitstop_left > 0.0
+    }
+
+    /// While the blob is shrunk (coiling), some attacks pass it by: spit,
+    /// and the guard's swing.
+    pub fn player_shrunk(&self) -> bool {
+        self.controller.is_coiling()
     }
 
     /// The player can't be hurt while lunging, slamming, or just after a hit.

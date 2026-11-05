@@ -3,7 +3,8 @@
 
 use bevy::app::RunFixedMainLoopSystems;
 use bevy::prelude::*;
-use tarborn_sim::enemy::{GUARD_SWING_OFFSET, GUARD_SWING_RADIUS};
+use tarborn_sim::combat::SPIT_RADIUS;
+use tarborn_sim::enemy::{GUARD_SWING_OFFSET, GUARD_SWING_RADIUS, SPIT_AIM};
 use tarborn_sim::{
     AttackPhase, DT, Enemy, EnemyKind, Intent, Sim, State, TICKS_PER_SECOND, TarModes,
 };
@@ -288,6 +289,15 @@ fn draw(
         }
     }
 
+    // Spit in flight.
+    for shot in &sim.projectiles {
+        gizmos.circle_2d(
+            shot.position * PIXELS_PER_METER,
+            SPIT_RADIUS * PIXELS_PER_METER,
+            Color::srgb(1.0, 0.45, 0.2),
+        );
+    }
+
     // Noise rings, fading out.
     for ring in &game.rings {
         let fade = 1.0 - ring.age / RING_LIFE;
@@ -350,6 +360,7 @@ fn draw_enemy(gizmos: &mut Gizmos, enemy: &Enemy, at: Vec2, now: f32) {
         EnemyKind::Dummy => Color::srgb(0.6, 0.6, 0.65),
         EnemyKind::Grub => Color::srgb(0.75, 0.55, 0.85),
         EnemyKind::Guard => Color::srgb(0.45, 0.6, 0.95),
+        EnemyKind::Spitter => Color::srgb(0.95, 0.6, 0.35),
     };
     let flash = ((now * 20.0) as u32).is_multiple_of(2);
     let color = match enemy.state {
@@ -387,6 +398,19 @@ fn draw_enemy(gizmos: &mut Gizmos, enemy: &Enemy, at: Vec2, now: f32) {
         (EnemyKind::Grub, _) => {
             gizmos.circle_2d(at, r, color);
         }
+        (EnemyKind::Spitter, _) => {
+            let corners = [Vec2::X, Vec2::Y, Vec2::NEG_X, Vec2::NEG_Y, Vec2::X];
+            gizmos.linestrip_2d(corners.iter().map(|c| at + *c * r * 1.2), color);
+        }
+    }
+    // A spitter's aim line while it winds up, so you can see the shot coming.
+    if enemy.kind == EnemyKind::Spitter
+        && enemy.state == State::Attacking(AttackPhase::Windup)
+        && let Some(target) = enemy.target
+    {
+        let to = target * PIXELS_PER_METER;
+        let k = (enemy.state_time / SPIT_AIM).min(1.0);
+        gizmos.line_2d(at, at.lerp(to, k), Color::srgba(1.0, 0.4, 0.2, 0.5));
     }
     if enemy.kind != EnemyKind::Dummy && enemy.state != State::Prone {
         // An eye on the side it faces.

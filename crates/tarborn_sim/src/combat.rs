@@ -77,6 +77,8 @@ pub(crate) fn resolve(sim: &mut Sim, modes: TarModes, events: &mut Vec<Event>) {
         enemy.step(&sim.level, DT);
     }
     enemy_attacks(sim, events);
+    spawn_projectiles(sim);
+    move_projectiles(sim, events);
     for i in 0..sim.enemies.len() {
         player_hits(sim, i, modes, events);
     }
@@ -296,7 +298,12 @@ fn enemy_attacks(sim: &mut Sim, events: &mut Vec<Event>) {
             .positions
             .iter()
             .any(|q| q.distance(center) < reach);
-        if hit && !sim.player_invulnerable() {
+        if hit && sim.player_shrunk() {
+            sim.enemies[i].struck = true;
+            events.push(Event::Dodged {
+                at: sim.blob.center(),
+            });
+        } else if hit && !sim.player_invulnerable() {
             sim.enemies[i].struck = true;
             let away = sim.enemies[i].facing;
             hurt_player(sim, away, events);
@@ -381,5 +388,68 @@ fn pickups(sim: &mut Sim, events: &mut Vec<Event>) {
         sim.pickups.remove(index);
         sim.health += 1;
         events.push(Event::Healed { health: sim.health });
+    }
+}
+
+/// A glob of spit flying in a straight line.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Projectile {
+    pub position: Vec2,
+    pub velocity: Vec2,
+    /// Seconds left before it fizzles out.
+    pub life: f32,
+    /// Already passed through a shrunk player, so it doesn't count twice.
+    pub dodged: bool,
+}
+
+pub const SPIT_SPEED: f32 = 11.0;
+pub const SPIT_RADIUS: f32 = 0.15;
+const SPIT_LIFE: f32 = 3.0;
+
+fn spawn_projectiles(sim: &mut Sim) {
+    for enemy in &mut sim.enemies {
+        if let Some(direction) = enemy.fire.take() {
+            sim.projectiles.push(Projectile {
+                position: enemy.position + direction * (enemy.radius + SPIT_RADIUS + 0.05),
+                velocity: direction * SPIT_SPEED,
+                life: SPIT_LIFE,
+                dodged: false,
+            });
+        }
+    }
+}
+
+fn move_projectiles(sim: &mut Sim, events: &mut Vec<Event>) {
+    let mut i = 0;
+    while i < sim.projectiles.len() {
+        let shot = &mut sim.projectiles[i];
+        shot.position += shot.velocity * DT;
+        shot.life -= DT;
+        let at = shot.position;
+        let blocked = shot.life <= 0.0
+            || sim
+                .level
+                .solids
+                .iter()
+                .any(|s| s.penetration(at, SPIT_RADIUS).is_some());
+        if blocked {
+            sim.projectiles.remove(i);
+            continue;
+        }
+        let reach = SPIT_RADIUS + sim.blob.params.point_radius;
+        let touching = sim.blob.center().distance(at) < sim.blob.params.radius
+            || sim.blob.positions.iter().any(|q| q.distance(at) < reach);
+        if touching && sim.player_shrunk() {
+            if !sim.projectiles[i].dodged {
+                sim.projectiles[i].dodged = true;
+                events.push(Event::Dodged { at });
+            }
+        } else if touching && !sim.player_invulnerable() && !sim.projectiles[i].dodged {
+            let away = sim.projectiles[i].velocity.x.signum();
+            sim.projectiles.remove(i);
+            hurt_player(sim, away, events);
+            continue;
+        }
+        i += 1;
     }
 }

@@ -50,8 +50,8 @@ sudo apt install libasound2-dev libudev-dev libwayland-dev libxkbcommon-dev pkg-
 - **Sticky** clings to walls and ceilings; roll to crawl along them.
 - **Coil**: while sticky and touching a surface, holding jump shrinks the
   blob instead of jumping. Release to launch off the surface: the longer the
-  hold, the faster (up to 2x a jump at 0.6 s). Aim away from the surface to
-  choose the direction. Plain jumps without sticky are still instant.
+  hold, the faster (up to 2x a jump at 0.6 s). Aim away from or along the
+  surface to choose the direction. Shrunk, you dodge some attacks. Plain jumps without sticky are still instant.
 - **Bouncy** is springy and nearly frictionless: you rebound off whatever you
   hit. Slam with bouncy held to launch yourself high.
 
@@ -95,7 +95,7 @@ its head show it.
 | Suspicious | yellow ring           | Heard you. Turns to look after a short reaction.        |
 | Searching  | orange ring           | Lost you, checking your last spot. Gives up after 4 s.  |
 | Defending  | cyan shield line      | Guard only: blocks lunges and impacts from the front.   |
-| Attacking  | flashing red, then swing circle | 0.45 s wind-up, then the swing. Open afterwards. |
+| Attacking  | flashing red, then swing circle or shot | Wind-up, then the attack. Open afterwards. Shrinking dodges it. |
 | Dizzy      | orbiting dots, grey   | Double damage. Caused by slams, pogos, shockwaves.      |
 | Prone      | flattened, grey       | Double damage.                                          |
 | Fleeing    | green                 | Grub only: running away.                                |
@@ -109,3 +109,10 @@ its head show it.
   around only after you've been behind it for 0.4 s. Beat it from behind,
   from above (slam or pogo makes it dizzy), or right after its swing.
 - **Grub**: harmless. Wanders, startles, and runs away.
+- **Spitter** (orange diamond): keeps its distance, aims for 0.6 s (a line
+  grows toward you), then spits a glob that flies straight. It backs away if
+  you get within 3 m, and takes double damage while recovering from a shot.
+- **Shrink to dodge**: while you are coiling (sticky + hold jump), spit and
+  guard swings pass you by. The combo is to shrink under the attack, then
+  release to launch into the enemy while it recovers. A coil can launch along
+  the surface too, so on the floor you can aim straight at the enemy.

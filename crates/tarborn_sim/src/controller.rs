@@ -154,6 +154,10 @@ pub enum Event {
         enemy: usize,
         at: Vec2,
     },
+    /// An enemy attack passed through the shrunk (coiling) blob.
+    Dodged {
+        at: Vec2,
+    },
     /// A guard's shield stopped the hit.
     Blocked {
         enemy: usize,
@@ -422,10 +426,10 @@ impl Controller {
         self.coil = None;
         blob.scale = 1.0;
         let normal = self.last_support;
-        // Aim away from the surface to pick the direction; otherwise leap
+        // Aim away from or along the surface to pick the direction; otherwise leap
         // off it, arcing upward from walls.
         let direction = match aim.try_normalize() {
-            Some(a) if a.dot(normal) > 0.2 => a,
+            Some(a) if a.dot(normal) > -0.2 => a,
             _ => (normal + Vec2::Y * 0.5).normalize_or(normal),
         };
         let speed = self.params.jump_speed * (1.0 + (self.params.coil_max_power - 1.0) * power);

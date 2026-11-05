@@ -3,8 +3,9 @@
 //! height.
 //!
 //! Two verbs, two buttons:
-//! - **Grip (hold) shrinks.** The blob gets small and sticky, makes no noise,
-//!   dodges some attacks, and charges up the longer it stays shrunk.
+//! - **Grip (hold) shrinks.** The blob gets small and sticky, and charges up
+//!   the longer it stays shrunk. The moment of shrinking is a dodge: nothing
+//!   can hurt the blob while it goes from full size to small.
 //! - **Jump (press) expands**, the instant it is pressed:
 //!   - at normal size on a surface: a jump (hold for height);
 //!   - shrunk on a surface: a burst, a lunge at a nearby enemy or, with none
@@ -69,6 +70,11 @@ pub struct FeelParams {
     /// How small the blob gets at full charge. It drops most of the way there
     /// as soon as Grip goes down.
     pub coil_min_scale: f32,
+    /// How long shrinking takes. The blob can't be hurt meanwhile: the dodge.
+    pub dodge_time: f32,
+    /// After a dodge, shrinking again within this long is instant and doesn't
+    /// dodge, so tapping Grip can't chain dodges forever.
+    pub dodge_cooldown: f32,
     /// Jump lunges at enemies within this distance...
     pub lunge_range: f32,
     /// ...and, when the stick is pushed, within this angle (radians) of it.
@@ -99,6 +105,8 @@ impl Default for FeelParams {
             coil_time: 0.6,
             coil_max_power: 2.0,
             coil_min_scale: 0.65,
+            dodge_time: 0.15,
+            dodge_cooldown: 0.45,
             lunge_range: 5.0,
             lunge_aim_angle: 60f32.to_radians(),
             lunge_max_time: 0.4,
@@ -127,6 +135,10 @@ pub struct Controller {
     slamming: bool,
     /// Seconds shrunk, while Grip is held.
     shrunk: Option<f32>,
+    /// Time left in the shrinking dodge.
+    dodge_left: f32,
+    /// Time before shrinking dodges again.
+    dodge_ready_in: f32,
     /// Seconds Jump has been held without a break.
     jump_hold: f32,
 }
@@ -194,7 +206,7 @@ pub enum Event {
         damage: f32,
         at: Vec2,
     },
-    /// An enemy attack passed through the shrunk blob.
+    /// An enemy attack passed through the blob while it was shrinking.
     Dodged {
         at: Vec2,
     },
@@ -266,6 +278,8 @@ impl Controller {
             lunge_power: 0.0,
             slamming: false,
             shrunk: None,
+            dodge_left: 0.0,
+            dodge_ready_in: 0.0,
             jump_hold: 0.0,
         }
     }
@@ -301,9 +315,14 @@ impl Controller {
         self.slamming
     }
 
-    /// Lunges and slams can't be hurt.
+    /// The blob is mid-shrink: nothing can hurt it.
+    pub fn is_dodging(&self) -> bool {
+        self.dodge_left > 0.0
+    }
+
+    /// Lunges, slams and the shrinking dodge can't be hurt.
     pub fn invulnerable(&self) -> bool {
-        self.is_lunging() || self.slamming
+        self.is_lunging() || self.slamming || self.is_dodging()
     }
 
     /// 1 for right, -1 for left.
@@ -360,15 +379,23 @@ impl Controller {
             0.0
         };
 
-        // Grip shrinks.
+        // Grip shrinks. Going from full size to small is the dodge, when ready.
+        self.dodge_left = (self.dodge_left - dt).max(0.0);
+        self.dodge_ready_in = (self.dodge_ready_in - dt).max(0.0);
         if intent.modes.sticky {
             if self.shrunk.is_none() {
                 events.push(Event::Shrank);
+                if self.dodge_ready_in <= 0.0 {
+                    self.dodge_left = self.params.dodge_time;
+                    self.dodge_ready_in = self.params.dodge_cooldown;
+                }
             }
             self.shrunk = Some(self.shrunk.unwrap_or(0.0) + dt);
             let size = 0.4 + 0.6 * self.charge();
-            blob.scale = 1.0 + (self.params.coil_min_scale - 1.0) * size;
+            let progress = 1.0 - self.dodge_left / self.params.dodge_time;
+            blob.scale = 1.0 + (self.params.coil_min_scale - 1.0) * size * progress;
         } else if self.shrunk.take().is_some() {
+            self.dodge_left = 0.0;
             blob.scale = 1.0;
         }
 

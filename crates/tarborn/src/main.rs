@@ -78,17 +78,7 @@ struct Game {
     previous_enemies: Vec<Vec2>,
     /// Seconds since the player died; the room restarts after a moment.
     dead_for: f32,
-    /// Noises the player made recently, drawn as fading rings.
-    rings: Vec<Ring>,
 }
-
-struct Ring {
-    at: Vec2,
-    radius: f32,
-    age: f32,
-}
-
-const RING_LIFE: f32 = 0.4;
 
 impl Game {
     fn new(room: Room) -> Self {
@@ -101,7 +91,6 @@ impl Game {
             previous: sim.blob.positions.clone(),
             previous_enemies: sim.enemies.iter().map(|e| e.position).collect(),
             dead_for: 0.0,
-            rings: Vec::new(),
             sim,
         }
     }
@@ -247,20 +236,6 @@ fn tick(mut game: ResMut<Game>, mut latch: ResMut<InputLatch>) {
     game.previous_enemies
         .extend(game.sim.enemies.iter().map(|e| e.position));
     game.sim.step(intent);
-    for ring in &mut game.rings {
-        ring.age += DT;
-    }
-    game.rings.retain(|r| r.age < RING_LIFE);
-    // Continuous noise (fast rolling) would stack a ring every tick; keep one per spot.
-    for &(at, radius) in &game.sim.noises {
-        if !game.rings.iter().any(|r| r.age < 0.1 && r.radius == radius) {
-            game.rings.push(Ring {
-                at,
-                radius,
-                age: 0.0,
-            });
-        }
-    }
 }
 
 fn follow_camera(
@@ -359,16 +334,6 @@ fn draw(
             shot.position * PIXELS_PER_METER,
             SPIT_RADIUS * PIXELS_PER_METER,
             Color::srgb(1.0, 0.45, 0.2),
-        );
-    }
-
-    // Noise rings, fading out.
-    for ring in &game.rings {
-        let fade = 1.0 - ring.age / RING_LIFE;
-        gizmos.circle_2d(
-            ring.at * PIXELS_PER_METER,
-            ring.radius * PIXELS_PER_METER * (0.6 + 0.4 * ring.age / RING_LIFE),
-            Color::srgba(1.0, 1.0, 1.0, 0.25 * fade),
         );
     }
 
@@ -557,10 +522,6 @@ fn draw_enemy(gizmos: &mut Gizmos, enemy: &Enemy, at: Vec2, now: f32) {
             let white = Color::WHITE;
             gizmos.line_2d(head, head + Vec2::Y * 12.0, white);
             gizmos.circle_2d(head - Vec2::Y * 5.0, 1.5, white);
-        }
-        State::Suspicious => {
-            gizmos.circle_2d(head + Vec2::Y * 6.0, 5.0, Color::srgb(1.0, 0.9, 0.3));
-            gizmos.circle_2d(head - Vec2::Y * 4.0, 1.5, Color::srgb(1.0, 0.9, 0.3));
         }
         // Skitters are always searching, so it isn't marked on them.
         State::Searching if enemy.kind != EnemyKind::Skitter => {

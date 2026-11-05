@@ -17,10 +17,6 @@ fn run(sim: &mut Sim, intent: Intent, seconds: f32) -> Vec<Event> {
     (0..ticks(seconds)).flat_map(|_| sim.step(intent)).collect()
 }
 
-const STICKY: TarModes = TarModes {
-    sticky: true,
-    bouncy: false,
-};
 const BOUNCY: TarModes = TarModes {
     sticky: false,
     bouncy: true,
@@ -95,11 +91,18 @@ fn a_guard_sees_the_player_in_front() {
 }
 
 #[test]
-fn a_guard_does_not_see_behind_itself() {
+fn a_guard_sees_the_player_behind_it_too() {
+    // Sight is line of sight only, in every direction.
     let mut sim = with_guard(5.0, 1.0);
-    // Stand still for a moment: no noise, out of sight.
-    sim.enemies[0].home = v(8.0, 0.6);
-    run(&mut sim, Intent::default(), 0.3);
+    run(&mut sim, Intent::default(), 0.1);
+    assert_eq!(sim.enemies[0].state, State::Defending);
+}
+
+#[test]
+fn a_guard_off_screen_does_not_see_the_player() {
+    let mut sim = with_guard(16.0, -1.0);
+    sim.enemies[0].home = v(18.0, 0.6);
+    run(&mut sim, Intent::default(), 0.5);
     assert_eq!(sim.enemies[0].state, State::Unaware);
 }
 
@@ -112,9 +115,12 @@ fn a_guard_cannot_see_through_walls() {
 }
 
 #[test]
-fn a_bounce_behind_a_guard_makes_it_suspicious() {
+fn noise_does_not_alert_a_guard_behind_a_wall() {
+    // Bouncing loudly behind a wall: no hearing, so it never notices.
     let mut sim = Sim::new(flat_floor(), v(0.0, 3.0));
-    let mut guard = Enemy::guard(v(4.0, 0.6));
+    sim.level.solids.push(Solid::rect(v(2.0, 0.0), v(2.5, 6.0)));
+    let mut guard = Enemy::guard(v(5.0, 0.6));
+    guard.home = v(7.0, 0.6);
     guard.facing = 1.0;
     sim.enemies.push(guard);
     run(
@@ -123,36 +129,14 @@ fn a_bounce_behind_a_guard_makes_it_suspicious() {
             modes: BOUNCY,
             ..Default::default()
         },
-        0.8,
-    );
-    let guard = &sim.enemies[0];
-    assert!(
-        matches!(guard.state, State::Suspicious | State::Defending),
-        "{:?}",
-        guard.state
-    );
-    assert_eq!(guard.facing, -1.0, "did not turn toward the noise");
-}
-
-#[test]
-fn crawling_with_sticky_is_silent() {
-    let mut sim = with_guard(6.0, 1.0);
-    sim.enemies[0].home = v(9.0, 0.6);
-    run(
-        &mut sim,
-        Intent {
-            roll: 1.0,
-            modes: STICKY,
-            ..Default::default()
-        },
         1.0,
     );
-    assert!(sim.noises.is_empty(), "{:?}", sim.noises);
     assert_eq!(sim.enemies[0].state, State::Unaware);
 }
 
 #[test]
 fn a_surprise_hit_does_triple_damage() {
+    // Spotting the player this close startles it, so the hit is a surprise.
     let mut sim = with_guard(2.1, 1.0);
     sim.enemies[0].home = v(4.0, 0.6);
     let mut events = sim.step(lunge(v(1.0, 0.0)));

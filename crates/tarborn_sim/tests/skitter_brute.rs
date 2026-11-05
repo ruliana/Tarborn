@@ -137,7 +137,7 @@ fn a_skitter_after_its_pounce_can_be_lunged() {
 }
 
 #[test]
-fn a_skitter_pounces_on_the_player_and_shrinking_does_not_help() {
+fn a_skitter_pounces_on_the_player_and_staying_small_does_not_help() {
     for hold in [Intent::default(), grip()] {
         let mut sim = settled_with(vec![facing(Enemy::skitter(v(4.0, 0.3)), -1.0)]);
         let events = run(&mut sim, hold, 2.5);
@@ -198,7 +198,7 @@ fn facing_a_brute() -> Sim {
 }
 
 #[test]
-fn a_brute_quake_hurts_a_player_on_the_ground_even_shrunk() {
+fn a_brute_quake_hurts_a_player_on_the_ground_even_small() {
     let mut sim = facing_a_brute();
     let events = run(&mut sim, grip(), 1.5);
     assert!(
@@ -278,4 +278,24 @@ fn a_brute_eats_grubs_to_heal() {
     assert!(!sim.enemies[1].alive());
     assert!(sim.enemies[0].health > 100.0);
     assert_eq!(sim.enemies[0].kind, EnemyKind::Brute);
+}
+
+#[test]
+fn shrinking_as_the_quake_lands_dodges_it() {
+    let mut sim = facing_a_brute();
+    while !(sim.enemies[0].state == State::Attacking(AttackPhase::Windup)
+        && sim.enemies[0].state_time > tarborn_sim::enemy::BRUTE_WINDUP - 0.05)
+    {
+        sim.step(Intent::default());
+    }
+    let events = run(&mut sim, grip(), 0.4);
+    assert!(
+        events.iter().any(|e| matches!(e, Event::Quake { .. })),
+        "{events:?}"
+    );
+    assert!(
+        events.iter().any(|e| matches!(e, Event::Dodged { .. })),
+        "{events:?}"
+    );
+    assert!(!hurt(&events), "{events:?}");
 }

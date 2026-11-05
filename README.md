@@ -59,7 +59,8 @@ The blob flashes white while invulnerable.
 
 ### Combat
 
-The test room has training dummies (purple circles) and a strip of spikes.
+The test room has a training dummy (grey circle with a cross), grubs (small
+purple circles), guards (blue rectangles) and a strip of spikes.
 
 - Your body is the weapon. A lunge always hits for a fixed amount, a slam
   hits whatever it lands on and sends out a shockwave, landing on an enemy
@@ -80,3 +81,31 @@ The test room has training dummies (purple circles) and a strip of spikes.
 - Jump buffering (120 ms), coyote time (100 ms) and variable jump height are
   part of the simulation and covered by tests in
   `crates/tarborn_sim/tests/feel.rs`.
+
+## Enemies
+
+Enemies share one set of states, but each kind uses only some of them. The
+state decides how easy an enemy is to hurt, and its colour and the mark over
+its head show it.
+
+| State      | Mark                  | What it means for you                                   |
+|------------|-----------------------|---------------------------------------------------------|
+| Unaware    | none                  | First hit is a surprise: triple damage.                 |
+| Surprised  | white `!`             | Frozen for a moment, triple damage.                     |
+| Suspicious | yellow ring           | Heard you. Turns to look after a short reaction.        |
+| Searching  | orange ring           | Lost you, checking your last spot. Gives up after 4 s.  |
+| Defending  | cyan shield line      | Guard only: blocks lunges and impacts from the front.   |
+| Attacking  | flashing red, then swing circle | 0.45 s wind-up, then the swing. Open afterwards. |
+| Dizzy      | orbiting dots, grey   | Double damage. Caused by slams, pogos, shockwaves.      |
+| Prone      | flattened, grey       | Double damage.                                          |
+| Fleeing    | green                 | Grub only: running away.                                |
+
+- **Sight**: enemies see in front of them, not through walls. Guards see
+  8 m, grubs 4 m. Spotting you within 3 m startles them.
+- **Noise**: jumps, lunges, launches, bounces, hits and slams make noise of
+  growing reach (the white rings). Fast rolling makes a little. Sticky
+  movement makes none, so crawling is how you sneak.
+- **Guard**: patrols, blocks from the front even while winding up, and turns
+  around only after you've been behind it for 0.4 s. Beat it from behind,
+  from above (slam or pogo makes it dizzy), or right after its swing.
+- **Grub**: harmless. Wanders, startles, and runs away.

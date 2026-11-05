@@ -7,6 +7,7 @@
 use glam::Vec2;
 
 use crate::controller::{Event, HitKind};
+use crate::enemy::{GUARD_SWING_OFFSET, GUARD_SWING_RADIUS, HitOutcome, Senses, line_of_sight};
 use crate::{DT, Sim, TarModes};
 
 #[derive(Clone, Debug, PartialEq)]
@@ -70,9 +71,12 @@ pub(crate) fn resolve(sim: &mut Sim, modes: TarModes, events: &mut Vec<Event>) {
         })
         .collect();
 
+    sim.noises = noises(sim, modes, events);
+    perceive_and_think(sim);
     for enemy in &mut sim.enemies {
         enemy.step(&sim.level, DT);
     }
+    enemy_attacks(sim, events);
     for i in 0..sim.enemies.len() {
         player_hits(sim, i, modes, events);
     }
@@ -127,6 +131,15 @@ fn player_hits(sim: &mut Sim, i: usize, modes: TarModes, events: &mut Vec<Event>
         HitKind::Shockwave => p.shockwave_damage,
     };
 
+    sim.controller.cancel_moves(&mut sim.blob);
+    let knockback = (direction + Vec2::Y * 0.4).normalize() * p.knockback;
+    let p = sim.combat.clone();
+    if apply_hit(sim, i, kind, direction, damage, knockback, events) {
+        // Blocked: bounced back, and no free lunge.
+        sim.blob.set_velocity(-direction * 8.0 + Vec2::Y * 4.0);
+        return;
+    }
+
     // The player rebounds: up off the top of things, back off the sides.
     let v = sim.blob.velocity();
     let rebound = match kind {
@@ -141,12 +154,8 @@ fn player_hits(sim: &mut Sim, i: usize, modes: TarModes, events: &mut Vec<Event>
         HitKind::Lunge => -direction * 4.0 + Vec2::Y * 6.0,
         _ => v - direction * closing * 1.3,
     };
-    sim.controller.cancel_moves(&mut sim.blob);
     sim.blob.set_velocity(rebound);
     sim.controller.refresh_lunge();
-
-    let knockback = (direction + Vec2::Y * 0.4).normalize() * p.knockback;
-    apply_hit(sim, i, kind, damage, knockback, events);
 }
 
 fn shockwave(sim: &mut Sim, at: Vec2, events: &mut Vec<Event>) {
@@ -166,22 +175,40 @@ fn shockwave(sim: &mut Sim, at: Vec2, events: &mut Vec<Event>) {
         };
         let knockback = Vec2::new(side * 0.6, 1.0).normalize() * sim.combat.knockback;
         let damage = sim.combat.shockwave_damage;
-        apply_hit(sim, i, HitKind::Shockwave, damage, knockback, events);
+        let direction = offset.normalize_or(Vec2::Y);
+        apply_hit(
+            sim,
+            i,
+            HitKind::Shockwave,
+            direction,
+            damage,
+            knockback,
+            events,
+        );
     }
 }
 
+/// Hits enemy `i`. Returns true if its shield blocked the hit.
 fn apply_hit(
     sim: &mut Sim,
     i: usize,
     kind: HitKind,
+    direction: Vec2,
     damage: f32,
     knockback: Vec2,
     events: &mut Vec<Event>,
-) {
+) -> bool {
     let enemy = &mut sim.enemies[i];
     enemy.hit_cooldown = sim.combat.hit_cooldown;
     let at = enemy.position;
-    let killed = enemy.hurt(damage, knockback);
+    let (damage, killed) = match enemy.take_hit(kind, direction, damage, knockback) {
+        HitOutcome::Blocked => {
+            events.push(Event::Blocked { enemy: i, at });
+            sim.freeze(sim.combat.hitstop);
+            return true;
+        }
+        HitOutcome::Hurt { damage, killed } => (damage, killed),
+    };
     events.push(Event::Hit {
         enemy: i,
         kind,
@@ -194,6 +221,86 @@ fn apply_hit(
         sim.freeze(sim.combat.kill_hitstop);
     } else {
         sim.freeze(sim.combat.hitstop);
+    }
+    false
+}
+
+/// How far each kind of player action can be heard. Sticky movement makes
+/// no noise at all, so crawling is the way to sneak up on things.
+fn noises(sim: &Sim, modes: TarModes, events: &[Event]) -> Vec<(Vec2, f32)> {
+    let at = sim.blob.center();
+    let mut out: Vec<(Vec2, f32)> = events
+        .iter()
+        .filter_map(|e| {
+            let radius = match e {
+                Event::Jumped { .. } => 3.0,
+                Event::Lunged { .. } => 4.0,
+                Event::Launched { .. } => 5.0,
+                Event::Bounced { .. } => 7.0,
+                Event::Hit { .. } | Event::Blocked { .. } => 8.0,
+                Event::Slammed { .. } => 10.0,
+                _ => return None,
+            };
+            Some((at, radius))
+        })
+        .collect();
+    let rolling_fast = sim.blob.touching_count() > 0 && sim.blob.velocity().length() > 5.0;
+    if rolling_fast && !modes.sticky {
+        out.push((at, 3.0));
+    }
+    out
+}
+
+fn perceive_and_think(sim: &mut Sim) {
+    let player = sim.blob.center();
+    for enemy in &mut sim.enemies {
+        if !enemy.alive() {
+            continue;
+        }
+        let offset = player - enemy.position;
+        let in_front = offset.x * enemy.facing > -0.3;
+        let sees_player = !sim.dead
+            && in_front
+            && offset.length() < enemy.kind.sight_range()
+            && offset.y.abs() < 2.5
+            && line_of_sight(&sim.level, enemy.position, player);
+        let heard = sim
+            .noises
+            .iter()
+            .filter(|(at, radius)| at.distance(enemy.position) <= *radius)
+            .map(|(at, _)| *at)
+            .min_by(|a, b| {
+                a.distance(enemy.position)
+                    .total_cmp(&b.distance(enemy.position))
+            });
+        let senses = Senses {
+            player,
+            sees_player,
+            heard,
+        };
+        enemy.think(senses, &sim.level, DT);
+    }
+}
+
+/// Swings that connect with the player.
+fn enemy_attacks(sim: &mut Sim, events: &mut Vec<Event>) {
+    for i in 0..sim.enemies.len() {
+        let enemy = &sim.enemies[i];
+        if !enemy.alive() || !enemy.striking() || enemy.struck {
+            continue;
+        }
+        let center = enemy.position + Vec2::X * enemy.facing * GUARD_SWING_OFFSET;
+        let reach = GUARD_SWING_RADIUS + sim.blob.params.point_radius;
+        let hit = sim
+            .blob
+            .positions
+            .iter()
+            .any(|q| q.distance(center) < reach);
+        if hit && !sim.player_invulnerable() {
+            sim.enemies[i].struck = true;
+            let away = sim.enemies[i].facing;
+            hurt_player(sim, away, events);
+        }
     }
 }
 

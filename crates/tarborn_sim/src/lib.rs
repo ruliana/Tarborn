@@ -13,7 +13,7 @@ pub mod level;
 pub use blob::{Blob, BlobParams, TarModes};
 pub use combat::CombatParams;
 pub use controller::{Controller, Event, FeelParams, HitKind, Intent};
-pub use enemy::{Enemy, EnemyKind};
+pub use enemy::{AttackPhase, Enemy, EnemyKind, State};
 pub use level::{Level, Solid};
 
 use glam::Vec2;
@@ -35,6 +35,8 @@ pub struct Sim {
     pub hazards: Vec<Solid>,
     /// Tar drops that heal one health pip.
     pub pickups: Vec<Vec2>,
+    /// Noises the player made last tick: where, and how far they carry.
+    pub noises: Vec<(Vec2, f32)>,
     pub health: u32,
     pub max_health: u32,
     pub dead: bool,
@@ -58,6 +60,7 @@ impl Sim {
             enemies: Vec::new(),
             hazards: Vec::new(),
             pickups: Vec::new(),
+            noises: Vec::new(),
             health: combat.max_health,
             max_health: combat.max_health,
             combat,
@@ -70,15 +73,16 @@ impl Sim {
         }
     }
 
-    /// The test room with training dummies and a strip of spikes.
+    /// The test room with a dummy, grubs, guards and a strip of spikes.
     pub fn training_room(spawn: Vec2) -> Self {
         let v = Vec2::new;
         let mut sim = Self::new(Level::test_room(), spawn);
         sim.enemies = vec![
-            Enemy::dummy(v(-8.0, 0.6)),
-            Enemy::dummy(v(-9.0, 6.1)),
+            Enemy::guard(v(-8.0, 0.6)),
+            Enemy::grub(v(-9.0, 5.85)),
             Enemy::dummy(v(6.0, 0.6)),
-            Enemy::dummy(v(16.0, 4.6)),
+            Enemy::guard(v(16.0, 4.6)),
+            Enemy::grub(v(2.5, 0.35)),
         ];
         sim.hazards = vec![Solid::rect(v(-19.0, 0.0), v(-15.0, 0.3))];
         sim

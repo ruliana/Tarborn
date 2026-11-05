@@ -154,6 +154,11 @@ pub enum Event {
         enemy: usize,
         at: Vec2,
     },
+    /// A guard's shield stopped the hit.
+    Blocked {
+        enemy: usize,
+        at: Vec2,
+    },
     PlayerHurt {
         health: u32,
     },

@@ -3,7 +3,10 @@
 
 use bevy::app::RunFixedMainLoopSystems;
 use bevy::prelude::*;
-use tarborn_sim::{DT, Intent, Sim, TICKS_PER_SECOND, TarModes};
+use tarborn_sim::enemy::{GUARD_SWING_OFFSET, GUARD_SWING_RADIUS};
+use tarborn_sim::{
+    AttackPhase, DT, Enemy, EnemyKind, Intent, Sim, State, TICKS_PER_SECOND, TarModes,
+};
 
 const PIXELS_PER_METER: f32 = 48.0;
 const SPAWN: Vec2 = Vec2::new(0.0, 2.0);
@@ -44,7 +47,17 @@ struct Game {
     previous_enemies: Vec<Vec2>,
     /// Seconds since the player died; the room restarts after a moment.
     dead_for: f32,
+    /// Noises the player made recently, drawn as fading rings.
+    rings: Vec<Ring>,
 }
+
+struct Ring {
+    at: Vec2,
+    radius: f32,
+    age: f32,
+}
+
+const RING_LIFE: f32 = 0.4;
 
 impl Game {
     fn new() -> Self {
@@ -53,6 +66,7 @@ impl Game {
             previous: sim.blob.positions.clone(),
             previous_enemies: sim.enemies.iter().map(|e| e.position).collect(),
             dead_for: 0.0,
+            rings: Vec::new(),
             sim,
         }
     }
@@ -182,6 +196,20 @@ fn tick(mut game: ResMut<Game>, mut latch: ResMut<InputLatch>) {
     game.previous_enemies
         .extend(game.sim.enemies.iter().map(|e| e.position));
     game.sim.step(intent);
+    for ring in &mut game.rings {
+        ring.age += DT;
+    }
+    game.rings.retain(|r| r.age < RING_LIFE);
+    // Continuous noise (fast rolling) would stack a ring every tick; keep one per spot.
+    for &(at, radius) in &game.sim.noises {
+        if !game.rings.iter().any(|r| r.age < 0.1 && r.radius == radius) {
+            game.rings.push(Ring {
+                at,
+                radius,
+                age: 0.0,
+            });
+        }
+    }
 }
 
 fn follow_camera(
@@ -249,29 +277,25 @@ fn draw(
         );
     }
 
-    // Enemies: a circle with a cross, and a health bar above while hurt.
     for (i, enemy) in sim.enemies.iter().enumerate() {
-        if !enemy.alive() {
-            continue;
+        if enemy.alive() {
+            draw_enemy(
+                &mut gizmos,
+                enemy,
+                game.enemy_position(i, alpha),
+                time.elapsed_secs(),
+            );
         }
-        let at = game.enemy_position(i, alpha);
-        let r = enemy.radius * PIXELS_PER_METER;
-        let flash = enemy.hit_cooldown > 0.0;
-        let color = if flash {
-            Color::WHITE
-        } else {
-            Color::srgb(0.75, 0.55, 0.85)
-        };
-        gizmos.circle_2d(at, r, color);
-        gizmos.line_2d(at - Vec2::X * r * 0.5, at + Vec2::X * r * 0.5, color);
-        gizmos.line_2d(at - Vec2::Y * r * 0.5, at + Vec2::Y * r * 0.5, color);
-        if enemy.health < enemy.max_health {
-            let left = at + Vec2::new(-r, r + 8.0);
-            let full = 2.0 * r;
-            let filled = full * enemy.health / enemy.max_health;
-            gizmos.line_2d(left, left + Vec2::X * full, Color::srgb(0.3, 0.3, 0.3));
-            gizmos.line_2d(left, left + Vec2::X * filled, Color::srgb(0.9, 0.3, 0.3));
-        }
+    }
+
+    // Noise rings, fading out.
+    for ring in &game.rings {
+        let fade = 1.0 - ring.age / RING_LIFE;
+        gizmos.circle_2d(
+            ring.at * PIXELS_PER_METER,
+            ring.radius * PIXELS_PER_METER * (0.6 + 0.4 * ring.age / RING_LIFE),
+            Color::srgba(1.0, 1.0, 1.0, 0.25 * fade),
+        );
     }
 
     // Health pips in the top-left corner of the screen.
@@ -314,5 +338,118 @@ fn draw(
     );
     for point in &outline {
         gizmos.circle_2d(*point, 2.0, tar);
+    }
+}
+
+/// Enemies are plain shapes whose colour and marks show their state, so the
+/// player can read how vulnerable each one is at a glance.
+fn draw_enemy(gizmos: &mut Gizmos, enemy: &Enemy, at: Vec2, now: f32) {
+    let r = enemy.radius * PIXELS_PER_METER;
+    let facing = Vec2::X * enemy.facing;
+    let base = match enemy.kind {
+        EnemyKind::Dummy => Color::srgb(0.6, 0.6, 0.65),
+        EnemyKind::Grub => Color::srgb(0.75, 0.55, 0.85),
+        EnemyKind::Guard => Color::srgb(0.45, 0.6, 0.95),
+    };
+    let flash = ((now * 20.0) as u32).is_multiple_of(2);
+    let color = match enemy.state {
+        _ if enemy.hit_cooldown > 0.0 => Color::WHITE,
+        State::Attacking(AttackPhase::Windup) if flash => Color::srgb(1.0, 0.3, 0.2),
+        State::Attacking(AttackPhase::Strike) => Color::srgb(1.0, 0.3, 0.2),
+        State::Attacking(AttackPhase::Recover) | State::Dizzy | State::Prone => {
+            Color::srgb(0.5, 0.5, 0.5)
+        }
+        State::Fleeing => Color::srgb(0.4, 0.9, 0.4),
+        _ => base,
+    };
+
+    // Body.
+    match (enemy.kind, enemy.state) {
+        (_, State::Prone) => {
+            gizmos.rect_2d(
+                Isometry2d::from_translation(at - Vec2::Y * r * 0.5),
+                Vec2::new(r * 2.4, r),
+                color,
+            );
+        }
+        (EnemyKind::Guard, _) => {
+            gizmos.rect_2d(
+                Isometry2d::from_translation(at),
+                Vec2::new(r * 1.6, r * 2.0),
+                color,
+            );
+        }
+        (EnemyKind::Dummy, _) => {
+            gizmos.circle_2d(at, r, color);
+            gizmos.line_2d(at - Vec2::X * r * 0.5, at + Vec2::X * r * 0.5, color);
+            gizmos.line_2d(at - Vec2::Y * r * 0.5, at + Vec2::Y * r * 0.5, color);
+        }
+        (EnemyKind::Grub, _) => {
+            gizmos.circle_2d(at, r, color);
+        }
+    }
+    if enemy.kind != EnemyKind::Dummy && enemy.state != State::Prone {
+        // An eye on the side it faces.
+        gizmos.circle_2d(at + facing * r * 0.45 + Vec2::Y * r * 0.3, 2.5, color);
+    }
+
+    // Guard shield and swing.
+    if enemy.kind == EnemyKind::Guard {
+        let shield_up = matches!(
+            enemy.state,
+            State::Defending | State::Attacking(AttackPhase::Windup)
+        );
+        if shield_up {
+            let x = at + facing * (r * 0.8 + 6.0);
+            gizmos.line_2d(
+                x - Vec2::Y * r,
+                x + Vec2::Y * r,
+                Color::srgb(0.4, 0.95, 1.0),
+            );
+        }
+        if enemy.striking() {
+            let center = at + facing * GUARD_SWING_OFFSET * PIXELS_PER_METER;
+            gizmos.circle_2d(
+                center,
+                GUARD_SWING_RADIUS * PIXELS_PER_METER,
+                Color::srgb(1.0, 0.3, 0.2),
+            );
+        }
+    }
+
+    // A mark above the head for the states that matter.
+    let head = at + Vec2::Y * (r + 14.0);
+    match enemy.state {
+        State::Surprised => {
+            let white = Color::WHITE;
+            gizmos.line_2d(head, head + Vec2::Y * 12.0, white);
+            gizmos.circle_2d(head - Vec2::Y * 5.0, 1.5, white);
+        }
+        State::Suspicious => {
+            gizmos.circle_2d(head + Vec2::Y * 6.0, 5.0, Color::srgb(1.0, 0.9, 0.3));
+            gizmos.circle_2d(head - Vec2::Y * 4.0, 1.5, Color::srgb(1.0, 0.9, 0.3));
+        }
+        State::Searching => {
+            gizmos.circle_2d(head + Vec2::Y * 4.0, 6.0, Color::srgb(1.0, 0.6, 0.2));
+        }
+        State::Dizzy => {
+            for k in 0..3 {
+                let angle = now * 6.0 + k as f32 * std::f32::consts::TAU / 3.0;
+                gizmos.circle_2d(
+                    head + Vec2::new(angle.cos() * 10.0, angle.sin() * 3.0),
+                    2.5,
+                    Color::srgb(1.0, 0.9, 0.3),
+                );
+            }
+        }
+        _ => {}
+    }
+
+    if enemy.health < enemy.max_health {
+        let left = at + Vec2::new(-r, r + 6.0);
+        let full = 2.0 * r;
+        let filled = full * enemy.health / enemy.max_health;
+        gizmos.line_2d(left, left + Vec2::X * full, Color::srgb(0.3, 0.3, 0.3));
+        gizmos.line_2d(left, left + Vec2::X * filled, Color::srgb(0.9, 0.3, 0.3));
     }
 }

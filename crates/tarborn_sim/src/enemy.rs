@@ -108,6 +108,8 @@ pub struct Enemy {
     pub hit_cooldown: f32,
     /// While dead, time left until it respawns.
     pub respawn_left: Option<f32>,
+    /// Comes back after dying. Arena enemies stay dead.
+    pub respawns: bool,
     pub home: Vec2,
     pub on_ground: bool,
     /// Where it last saw the player, or the noise it is checking.
@@ -293,6 +295,7 @@ impl Enemy {
             max_health: stats.health,
             hit_cooldown: 0.0,
             respawn_left: None,
+            respawns: true,
             home: position,
             on_ground: false,
             target: None,
@@ -952,6 +955,9 @@ impl Enemy {
     pub fn step(&mut self, level: &Level, dt: f32) {
         self.hit_cooldown = (self.hit_cooldown - dt).max(0.0);
         if let Some(left) = &mut self.respawn_left {
+            if !self.respawns {
+                return;
+            }
             *left -= dt;
             if *left <= 0.0 {
                 *self = Self::new(self.kind, self.home);

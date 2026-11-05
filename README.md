@@ -42,6 +42,7 @@ Two buttons, plus the stick:
 | Jump    | Space or J             | South (A / Cross)               |
 | Grip    | K or Left Shift (hold) | Either trigger, or West (X / Square) |
 | Restart | R                      |                                 |
+| Switch room (arena / training) | T |                          |
 
 Two verbs: **Grip shrinks**, **Jump expands**.
 
@@ -74,6 +75,24 @@ charge), and **releasing Grip drops it**. A guard with its shield up can't be
 grabbed from the front.
 
 The blob flashes white while invulnerable.
+
+### Rooms
+
+The game starts in the **arena**: five waves that mix every enemy kind, more
+and more. Clear a wave and the next drops in after a short break. Arena
+enemies stay dead, but two grubs are always around to throw or to get eaten
+by brutes. Kills drop tar that heals. Dying restarts the arena.
+
+- The boxes in the top right are the waves: yellow is the current one,
+  green is beaten. Between waves, the next wave's number flashes in the
+  middle.
+- The number in the top middle is your **combo**: every hit on an enemy,
+  including enemies hurting each other, adds one if it comes within 2 s of
+  the last. Getting hurt drops it. The bar under it is the time left, and
+  the small grey number is your best chain.
+
+Press T to switch to the **training room**, which has one of each enemy (they
+respawn) and some terrain to try moves on.
 
 ### Combat
 

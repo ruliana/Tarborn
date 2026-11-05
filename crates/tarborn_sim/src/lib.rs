@@ -4,12 +4,14 @@
 //! dependency, so it can be unit tested headlessly and stays deterministic.
 //! The game crate only feeds it input and draws the result.
 
+pub mod arena;
 pub mod blob;
 pub mod combat;
 pub mod controller;
 pub mod enemy;
 pub mod level;
 
+pub use arena::{ARENA_SPAWN, Arena, Phase};
 pub use blob::{Blob, BlobParams, TarModes};
 pub use combat::{CombatParams, Projectile};
 pub use controller::{Controller, Event, FeelParams, HitKind, Intent};
@@ -22,6 +24,45 @@ use glam::Vec2;
 /// regardless of the display's frame rate.
 pub const TICKS_PER_SECOND: f32 = 120.0;
 pub const DT: f32 = 1.0 / TICKS_PER_SECOND;
+
+/// Seconds a chain stays alive without another hit.
+pub const COMBO_WINDOW: f32 = 2.0;
+
+/// Hits chained without a pause longer than [`COMBO_WINDOW`] or getting hurt.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct Combo {
+    pub count: u32,
+    /// The longest chain so far.
+    pub best: u32,
+    /// Seconds left before the chain drops.
+    pub left: f32,
+}
+
+impl Combo {
+    fn update(&mut self, events: &[Event], dt: f32) {
+        self.left -= dt;
+        for event in events {
+            match event {
+                // Anything hurting an enemy keeps the chain going, including
+                // enemies hurting each other.
+                Event::Hit { .. } | Event::Struck { .. } => {
+                    self.count += 1;
+                    self.best = self.best.max(self.count);
+                    self.left = COMBO_WINDOW;
+                }
+                Event::PlayerHurt { .. } => {
+                    self.count = 0;
+                    self.left = 0.0;
+                }
+                _ => {}
+            }
+        }
+        if self.left <= 0.0 {
+            self.count = 0;
+            self.left = 0.0;
+        }
+    }
+}
 
 /// The whole simulated world.
 #[derive(Clone, Debug)]
@@ -41,6 +82,9 @@ pub struct Sim {
     pub noises: Vec<(Vec2, f32)>,
     /// The enemy held in the blob's grip, if any.
     pub held: Option<usize>,
+    /// Waves of enemies, in the arena room.
+    pub arena: Option<Arena>,
+    pub combo: Combo,
     pub health: u32,
     pub max_health: u32,
     pub dead: bool,
@@ -67,6 +111,8 @@ impl Sim {
             noises: Vec::new(),
             projectiles: Vec::new(),
             held: None,
+            arena: None,
+            combo: Combo::default(),
             health: combat.max_health,
             max_health: combat.max_health,
             combat,
@@ -95,6 +141,14 @@ impl Sim {
             Enemy::brute(v(18.5, 4.9)),
         ];
         sim.hazards = vec![Solid::rect(v(-19.0, 0.0), v(-15.0, 0.3))];
+        sim
+    }
+
+    /// The arena room: waves of every enemy kind.
+    pub fn arena_room() -> Self {
+        let mut sim = Self::new(Level::arena(), ARENA_SPAWN);
+        sim.hazards = arena::arena_hazards();
+        sim.arena = Some(Arena::standard());
         sim
     }
 
@@ -149,6 +203,10 @@ impl Sim {
         );
         self.hurt_left = (self.hurt_left - DT).max(0.0);
         combat::resolve(self, intent, &mut events);
+        if let Some(arena) = &mut self.arena {
+            arena.step(&mut self.enemies, DT, &mut events);
+        }
+        self.combo.update(&events, DT);
         events
     }
 

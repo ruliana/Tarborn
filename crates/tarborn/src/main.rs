@@ -8,7 +8,8 @@ use tarborn_sim::enemy::{
     BRUTE_SLAM_RADIUS, BRUTE_WINDUP, GUARD_SWING_OFFSET, GUARD_SWING_RADIUS, SPIT_AIM,
 };
 use tarborn_sim::{
-    AttackPhase, DT, Enemy, EnemyKind, Intent, Sim, State, TICKS_PER_SECOND, TarModes,
+    ARENA_SPAWN, AttackPhase, DT, Enemy, EnemyKind, Intent, Phase, Sim, State, TICKS_PER_SECOND,
+    TarModes,
 };
 
 const PIXELS_PER_METER: f32 = 48.0;
@@ -27,7 +28,7 @@ fn main() {
         }))
         .insert_resource(Time::<Fixed>::from_hz(TICKS_PER_SECOND as f64))
         .insert_resource(ClearColor(Color::srgb(0.07, 0.06, 0.08)))
-        .insert_resource(Game::new())
+        .insert_resource(Game::new(Room::Arena))
         .init_resource::<InputLatch>()
         .add_systems(Startup, spawn_camera)
         // Sample input after Bevy has updated devices this frame but before the
@@ -41,8 +42,35 @@ fn main() {
         .run();
 }
 
+/// The rooms to play in. T switches between them.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Room {
+    /// Waves of every enemy kind.
+    Arena,
+    /// One of each enemy and some terrain, to try things out.
+    Training,
+}
+
+impl Room {
+    fn spawn(self) -> Vec2 {
+        match self {
+            Room::Arena => ARENA_SPAWN,
+            Room::Training => SPAWN,
+        }
+    }
+
+    /// How far the camera zooms out: the arena shows most of the room.
+    fn zoom(self) -> f32 {
+        match self {
+            Room::Arena => 1.6,
+            Room::Training => 1.0,
+        }
+    }
+}
+
 #[derive(Resource)]
 struct Game {
+    room: Room,
     sim: Sim,
     /// Blob points before the latest tick, for interpolating between ticks.
     previous: Vec<Vec2>,
@@ -63,9 +91,13 @@ struct Ring {
 const RING_LIFE: f32 = 0.4;
 
 impl Game {
-    fn new() -> Self {
-        let sim = Sim::training_room(SPAWN);
+    fn new(room: Room) -> Self {
+        let sim = match room {
+            Room::Arena => Sim::arena_room(),
+            Room::Training => Sim::training_room(SPAWN),
+        };
         Self {
+            room,
             previous: sim.blob.positions.clone(),
             previous_enemies: sim.enemies.iter().map(|e| e.position).collect(),
             dead_for: 0.0,
@@ -75,8 +107,10 @@ impl Game {
     }
 
     fn enemy_position(&self, index: usize, alpha: f32) -> Vec2 {
-        self.previous_enemies[index].lerp(self.sim.enemies[index].position, alpha)
-            * PIXELS_PER_METER
+        let now = self.sim.enemies[index].position;
+        // Enemies that dropped in this tick have no previous position yet.
+        let before = self.previous_enemies.get(index).copied().unwrap_or(now);
+        before.lerp(now, alpha) * PIXELS_PER_METER
     }
 
     /// Blob outline in world pixels, interpolated `alpha` of the way from the
@@ -101,10 +135,14 @@ struct InputLatch {
     modes: TarModes,
 }
 
-fn spawn_camera(mut commands: Commands) {
+fn spawn_camera(mut commands: Commands, game: Res<Game>) {
     commands.spawn((
         Camera2d,
-        Transform::from_translation((SPAWN * PIXELS_PER_METER).extend(0.0)),
+        Projection::Orthographic(OrthographicProjection {
+            scale: game.room.zoom(),
+            ..OrthographicProjection::default_2d()
+        }),
+        Transform::from_translation((game.room.spawn() * PIXELS_PER_METER).extend(0.0)),
     ));
 }
 
@@ -175,7 +213,14 @@ fn read_input(
     latch.modes = modes;
 
     if keys.just_pressed(KeyCode::KeyR) {
-        *game = Game::new();
+        *game = Game::new(game.room);
+    }
+    if keys.just_pressed(KeyCode::KeyT) {
+        let other = match game.room {
+            Room::Arena => Room::Training,
+            Room::Training => Room::Arena,
+        };
+        *game = Game::new(other);
     }
 }
 
@@ -193,7 +238,7 @@ fn tick(mut game: ResMut<Game>, mut latch: ResMut<InputLatch>) {
     if game.sim.dead {
         game.dead_for += DT;
         if game.dead_for > RESTART_DELAY {
-            *game = Game::new();
+            *game = Game::new(game.room);
         }
         return;
     }
@@ -222,8 +267,14 @@ fn follow_camera(
     game: Res<Game>,
     fixed: Res<Time<Fixed>>,
     time: Res<Time>,
-    mut camera: Single<&mut Transform, With<Camera2d>>,
+    camera: Single<(&mut Transform, &mut Projection), With<Camera2d>>,
 ) {
+    let (mut camera, mut projection) = camera.into_inner();
+    if let Projection::Orthographic(ortho) = &mut *projection
+        && ortho.scale != game.room.zoom()
+    {
+        ortho.scale = game.room.zoom();
+    }
     let outline = game.blob_outline(fixed.overstep_fraction());
     let center = outline.iter().copied().sum::<Vec2>() / outline.len() as f32;
     let target = center.extend(camera.translation.z);
@@ -321,18 +372,22 @@ fn draw(
         );
     }
 
+    // The HUD is laid out in screen pixels, scaled by the zoom.
+    let zoom = game.room.zoom();
+    let half = Vec2::new(window.width(), window.height()) * 0.5 * zoom;
+    let view = camera.translation.truncate();
     // Health pips in the top-left corner of the screen.
-    let corner = camera.translation.truncate()
-        + Vec2::new(-window.width() * 0.5 + 24.0, window.height() * 0.5 - 24.0);
+    let corner = view + Vec2::new(-half.x, half.y) + Vec2::new(24.0, -24.0) * zoom;
     for i in 0..sim.max_health {
-        let at = corner + Vec2::X * (i as f32 * 22.0);
+        let at = corner + Vec2::X * (i as f32 * 22.0 * zoom);
         let color = if i < sim.health {
             Color::srgb(0.95, 0.75, 0.3)
         } else {
             Color::srgb(0.3, 0.3, 0.3)
         };
-        gizmos.circle_2d(at, 8.0, color);
+        gizmos.circle_2d(at, 8.0 * zoom, color);
     }
+    draw_hud(&mut gizmos, sim, view, half, zoom);
 
     let modes = latch.modes;
     // Blink while invulnerable after being hurt; white while lunging.
@@ -533,5 +588,114 @@ fn draw_enemy(gizmos: &mut Gizmos, enemy: &Enemy, at: Vec2, now: f32) {
         let filled = full * enemy.health / enemy.max_health;
         gizmos.line_2d(left, left + Vec2::X * full, Color::srgb(0.3, 0.3, 0.3));
         gizmos.line_2d(left, left + Vec2::X * filled, Color::srgb(0.9, 0.3, 0.3));
+    }
+}
+
+/// Wave and combo counters, drawn with line digits so no font is needed.
+fn draw_hud(gizmos: &mut Gizmos, sim: &Sim, center: Vec2, half: Vec2, z: f32) {
+    let top_right = center + half - Vec2::splat(24.0 * z);
+    // Combo: the chain under way, in the top middle, and the best one beside it.
+    let top = center + Vec2::new(0.0, half.y - 30.0 * z);
+    if sim.combo.count >= 2 {
+        let fade = (sim.combo.left / tarborn_sim::COMBO_WINDOW).clamp(0.3, 1.0);
+        let color = Color::srgba(1.0, 0.85, 0.3, fade);
+        draw_number(gizmos, sim.combo.count, top, 18.0 * z, color);
+        // The time left in the chain, as a shrinking bar.
+        let width = 60.0 * z * sim.combo.left / tarborn_sim::COMBO_WINDOW;
+        let y = top.y - 22.0 * z;
+        gizmos.line_2d(
+            Vec2::new(top.x - width * 0.5, y),
+            Vec2::new(top.x + width * 0.5, y),
+            color,
+        );
+    }
+    if sim.combo.best >= 2 {
+        let grey = Color::srgb(0.5, 0.5, 0.5);
+        let at = top + Vec2::new(90.0, 4.0) * z;
+        draw_number(gizmos, sim.combo.best, at, 10.0 * z, grey);
+    }
+
+    let Some(arena) = &sim.arena else {
+        return;
+    };
+    // Waves: a box per wave, filled in once it is beaten.
+    let total = arena.waves.len();
+    for i in 0..total {
+        let at = top_right - Vec2::X * ((total - 1 - i) as f32 * 20.0 * z);
+        let done = i < arena.wave || arena.phase == Phase::Cleared;
+        let current = i == arena.wave && arena.phase == Phase::Fighting;
+        let color = if done {
+            Color::srgb(0.45, 0.85, 0.3)
+        } else if current {
+            Color::srgb(1.0, 0.85, 0.3)
+        } else {
+            Color::srgb(0.35, 0.35, 0.35)
+        };
+        let box_at = Isometry2d::from_translation(at);
+        gizmos.rect_2d(box_at, Vec2::splat(12.0 * z), color);
+        if done {
+            gizmos.rect_2d(box_at, Vec2::splat(6.0 * z), color);
+        }
+    }
+    // Between waves, the number of the one coming, big in the middle.
+    let middle = center + Vec2::Y * 120.0 * z;
+    match arena.phase {
+        Phase::Break(left) if left < tarborn_sim::arena::WAVE_BREAK - 0.3 || arena.wave == 0 => {
+            let pulse = 0.5 + 0.5 * (left * 6.0).sin().abs();
+            let color = Color::srgba(1.0, 0.85, 0.3, pulse);
+            draw_number(gizmos, arena.wave as u32 + 1, middle, 40.0 * z, color);
+        }
+        Phase::Cleared => {
+            // A big tick.
+            let green = Color::srgb(0.45, 0.85, 0.3);
+            let points = [
+                Vec2::new(-40.0, 0.0),
+                Vec2::new(-10.0, -30.0),
+                Vec2::new(45.0, 35.0),
+            ];
+            gizmos.linestrip_2d(points.map(|p| middle + p * z), green);
+        }
+        _ => {}
+    }
+}
+
+/// Draws `value` centered on `at`, in seven-segment digits `height` tall.
+fn draw_number(gizmos: &mut Gizmos, value: u32, at: Vec2, height: f32, color: Color) {
+    let digits: Vec<u32> = value
+        .to_string()
+        .chars()
+        .filter_map(|c| c.to_digit(10))
+        .collect();
+    let w = height * 0.5;
+    let gap = height * 0.25;
+    let total = digits.len() as f32 * (w + gap) - gap;
+    for (i, digit) in digits.iter().enumerate() {
+        let left = at.x - total * 0.5 + i as f32 * (w + gap);
+        draw_digit(gizmos, *digit, Vec2::new(left, at.y), w, height, color);
+    }
+}
+
+fn draw_digit(gizmos: &mut Gizmos, digit: u32, left_mid: Vec2, w: f32, h: f32, color: Color) {
+    // Segments: top, top-right, bottom-right, bottom, bottom-left, top-left, middle.
+    const SEGMENTS: [u8; 10] = [
+        0b0111111, 0b0000110, 0b1011011, 0b1001111, 0b1100110, 0b1101101, 0b1111101, 0b0000111,
+        0b1111111, 0b1101111,
+    ];
+    let (l, r) = (left_mid.x, left_mid.x + w);
+    let (t, m, b) = (left_mid.y + h * 0.5, left_mid.y, left_mid.y - h * 0.5);
+    let lines = [
+        (Vec2::new(l, t), Vec2::new(r, t)),
+        (Vec2::new(r, t), Vec2::new(r, m)),
+        (Vec2::new(r, m), Vec2::new(r, b)),
+        (Vec2::new(l, b), Vec2::new(r, b)),
+        (Vec2::new(l, m), Vec2::new(l, b)),
+        (Vec2::new(l, t), Vec2::new(l, m)),
+        (Vec2::new(l, m), Vec2::new(r, m)),
+    ];
+    let mask = SEGMENTS[digit as usize % 10];
+    for (k, (a, b)) in lines.iter().enumerate() {
+        if mask & (1 << k) != 0 {
+            gizmos.line_2d(*a, *b, color);
+        }
     }
 }

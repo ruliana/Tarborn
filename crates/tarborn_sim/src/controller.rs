@@ -213,6 +213,12 @@ pub enum Event {
         enemy: usize,
         prey: usize,
     },
+    /// An arena wave dropped in (counting from 0).
+    WaveStarted {
+        wave: usize,
+    },
+    /// The last arena wave is down.
+    ArenaCleared,
     /// A guard's shield stopped the hit.
     Blocked {
         enemy: usize,

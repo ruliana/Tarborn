@@ -96,7 +96,6 @@ struct InputLatch {
     aim: Vec2,
     jump_pressed: bool,
     jump_held: bool,
-    lunge_pressed: bool,
     modes: TarModes,
 }
 
@@ -127,13 +126,14 @@ fn read_input(
     if any_key(&[KeyCode::ArrowDown, KeyCode::KeyS]) {
         aim.y -= 1.0;
     }
-    let jump_keys = [KeyCode::Space];
+    // Two buttons: Jump (jump, air lunge, slam, hold to bounce) and Grip
+    // (cling, and with Jump, coil).
+    let jump_keys = [KeyCode::Space, KeyCode::KeyJ];
     let mut jump_pressed = keys.any_just_pressed(jump_keys);
     let mut jump_held = keys.any_pressed(jump_keys);
-    let mut lunge_pressed = keys.any_just_pressed([KeyCode::KeyJ, KeyCode::KeyX]);
     let mut modes = TarModes {
         sticky: any_key(&[KeyCode::KeyK, KeyCode::ShiftLeft]),
-        bouncy: any_key(&[KeyCode::KeyL]),
+        bouncy: false,
     };
 
     for pad in &gamepads {
@@ -153,11 +153,15 @@ fn read_input(
         }
         jump_pressed |= pad.just_pressed(GamepadButton::South);
         jump_held |= pad.pressed(GamepadButton::South);
-        lunge_pressed |= pad.just_pressed(GamepadButton::West);
-        modes.sticky |=
-            pad.pressed(GamepadButton::RightTrigger2) || pad.pressed(GamepadButton::RightTrigger);
-        modes.bouncy |=
-            pad.pressed(GamepadButton::LeftTrigger2) || pad.pressed(GamepadButton::LeftTrigger);
+        modes.sticky |= [
+            GamepadButton::RightTrigger2,
+            GamepadButton::RightTrigger,
+            GamepadButton::LeftTrigger2,
+            GamepadButton::LeftTrigger,
+            GamepadButton::West,
+        ]
+        .into_iter()
+        .any(|b| pad.pressed(b));
     }
 
     let aim = aim.clamp_length_max(1.0);
@@ -165,7 +169,6 @@ fn read_input(
     latch.aim = aim;
     latch.jump_pressed |= jump_pressed;
     latch.jump_held = jump_held;
-    latch.lunge_pressed |= lunge_pressed;
     latch.modes = modes;
 
     if keys.just_pressed(KeyCode::KeyR) {
@@ -179,11 +182,10 @@ fn tick(mut game: ResMut<Game>, mut latch: ResMut<InputLatch>) {
         aim: latch.aim,
         jump_pressed: latch.jump_pressed,
         jump_held: latch.jump_held,
-        lunge_pressed: latch.lunge_pressed,
+        lunge_pressed: false,
         modes: latch.modes,
     };
     latch.jump_pressed = false;
-    latch.lunge_pressed = false;
     let game = &mut *game;
     if game.sim.dead {
         game.dead_for += DT;
@@ -336,7 +338,7 @@ fn draw(
         Color::srgb(0.95, 0.3, 0.3)
     } else if modes.sticky {
         Color::srgb(0.45, 0.85, 0.3)
-    } else if modes.bouncy {
+    } else if latch.jump_held && !modes.sticky {
         Color::srgb(0.4, 0.7, 1.0)
     } else {
         Color::srgb(0.95, 0.75, 0.3)

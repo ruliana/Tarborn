@@ -124,7 +124,7 @@ fn player_hits(sim: &mut Sim, i: usize, modes: TarModes, events: &mut Vec<Event>
         return;
     };
     let damage = match kind {
-        HitKind::Lunge => p.lunge_damage,
+        HitKind::Lunge => p.lunge_damage * (1.0 + sim.controller.lunge_power()),
         HitKind::Slam => p.slam_damage,
         HitKind::Pogo => p.pogo_damage,
         HitKind::Impact => {

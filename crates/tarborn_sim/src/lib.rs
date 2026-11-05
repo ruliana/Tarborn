@@ -121,6 +121,8 @@ impl Sim {
             return Vec::new();
         }
         intent.jump_pressed |= std::mem::take(&mut self.pending_jump);
+        // Holding jump keeps the body springy, unless gripping (then it coils).
+        intent.modes.bouncy |= intent.jump_held && !intent.modes.sticky;
         intent.lunge_pressed |= std::mem::take(&mut self.pending_lunge);
 
         let targets: Vec<Vec2> = self

@@ -34,37 +34,47 @@ sudo apt install libasound2-dev libudev-dev libwayland-dev libxkbcommon-dev pkg-
 
 ## Controls
 
-| Action      | Keyboard              | Gamepad              |
-|-------------|-----------------------|----------------------|
-| Roll / aim  | A / D / W / S, arrows | Left stick, D-pad    |
-| Jump        | Space                 | South (A / Cross)    |
-| Lunge       | J or X                | West (X / Square)    |
-| Sticky      | K, Left Shift (hold)  | Right trigger        |
-| Bouncy      | L (hold)              | Left trigger         |
-| Restart     | R                     |                      |
+Two buttons, plus the stick:
 
-- **Lunge** is a short, gravity-free burst in the aimed direction (or the way
-  you face). You are invulnerable during it. You get one in the air, refilled
-  by touching any surface. Jumping cancels it and keeps its speed.
-- **Slam** is a lunge aimed down while in the air: straight down, hard.
-- **Sticky** clings to walls and ceilings; roll to crawl along them.
-- **Coil**: while sticky and touching a surface, holding jump shrinks the
-  blob instead of jumping. Release to launch off the surface: the longer the
-  hold, the faster (up to 2x a jump at 0.6 s). Aim away from or along the
-  surface to choose the direction. Shrunk, you dodge some attacks. Plain jumps without sticky are still instant.
-- **Bouncy** is springy and nearly frictionless: you rebound off whatever you
-  hit. Slam with bouncy held to launch yourself high.
+| Action  | Keyboard               | Gamepad                         |
+|---------|------------------------|---------------------------------|
+| Move/aim| A / D / W / S, arrows  | Left stick, D-pad               |
+| Jump    | Space or J             | South (A / Cross)               |
+| Grip    | K or Left Shift (hold) | Either trigger, or West (X / Square) |
+| Restart | R                      |                                 |
+
+Everything comes from those two:
+
+- **Jump** on a surface jumps instantly. Hold it to go higher.
+- **Jump in the air** lunges: a short, gravity-free burst in the aimed
+  direction (or the way you face). You are invulnerable during it, and it
+  snaps toward an enemy within 30°. One per air time, refilled by touching a
+  surface or by hitting something. A press just before landing is a buffered
+  jump instead.
+- **Down + Jump in the air** slams straight down.
+- **Holding Jump** keeps the blob bouncy: hold through a landing to rebound,
+  land on an enemy to pogo off it, slam while holding to launch high.
+  Release before landing to land soft.
+- **Grip** clings to walls and ceilings; roll to crawl along them. It is
+  silent, so it is also how you sneak.
+- **Grip + hold Jump** on a surface coils: the blob shrinks, dodging some
+  attacks. Release to launch, faster the longer you held (up to 2x a jump at
+  0.6 s), along the aim if you point away from or along the surface. If an
+  enemy is near where the launch is headed, it becomes a lunge at that enemy
+  that hits harder the longer you coiled.
 
 The blob flashes white while invulnerable.
 
 ### Combat
 
 The test room has a training dummy (grey circle with a cross), grubs (small
-purple circles), guards (blue rectangles) and a strip of spikes.
+purple circles), guards (blue rectangles), a spitter (orange diamond) and a
+strip of spikes.
 
-- Your body is the weapon. A lunge always hits for a fixed amount, a slam
-  hits whatever it lands on and sends out a shockwave, landing on an enemy
-  with bouncy held pogoes off it, and hitting anything at high speed hurts it.
+- Your body is the weapon. A lunge hits for a fixed amount (more from a
+  coil), a slam hits whatever it lands on and sends out a shockwave, landing
+  on an enemy with Jump held pogoes off it, and hitting anything at high
+  speed hurts it.
 - Every hit freezes the world for a moment, knocks the target back, and
   refreshes your lunge, so hits chain in the air. Lunges snap toward an enemy
   within 30° of where you aim.
@@ -112,7 +122,7 @@ its head show it.
 - **Spitter** (orange diamond): keeps its distance, aims for 0.6 s (a line
   grows toward you), then spits a glob that flies straight. It backs away if
   you get within 3 m, and takes double damage while recovering from a shot.
-- **Shrink to dodge**: while you are coiling (sticky + hold jump), spit and
+- **Shrink to dodge**: while you are coiling (Grip + hold Jump), spit and
   guard swings pass you by. The combo is to shrink under the attack, then
   release to launch into the enemy while it recovers. A coil can launch along
   the surface too, so on the floor you can aim straight at the enemy.

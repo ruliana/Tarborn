@@ -68,6 +68,9 @@ pub struct FeelParams {
     pub aim_assist_range: f32,
     /// ...and within this angle (radians) of where it was aimed.
     pub aim_assist_angle: f32,
+    /// A coil released with an enemy within this angle of its direction (and
+    /// in assist range) becomes a lunge at that enemy.
+    pub coil_lunge_angle: f32,
 }
 
 impl Default for FeelParams {
@@ -89,6 +92,7 @@ impl Default for FeelParams {
             coil_min_scale: 0.6,
             aim_assist_range: 5.0,
             aim_assist_angle: 30f32.to_radians(),
+            coil_lunge_angle: 45f32.to_radians(),
         }
     }
 }
@@ -107,6 +111,9 @@ pub struct Controller {
     lunge_direction: Vec2,
     lunge_cooldown_left: f32,
     air_lunge_ready: bool,
+    /// Speed of the current lunge.
+    lunge_speed: f32,
+    lunge_power: f32,
     slamming: bool,
     /// Seconds spent coiling, while coiling.
     coil: Option<f32>,
@@ -200,6 +207,8 @@ impl Controller {
             lunge_direction: Vec2::X,
             lunge_cooldown_left: 0.0,
             air_lunge_ready: true,
+            lunge_speed: 0.0,
+            lunge_power: 0.0,
             slamming: false,
             coil: None,
         }
@@ -271,7 +280,15 @@ impl Controller {
             self.air_lunge_ready = true;
         }
         if intent.jump_pressed {
-            self.buffer_left = self.params.jump_buffer;
+            // In the air, jump lunges, unless the press is a buffered jump
+            // for a landing that is about to happen.
+            let airborne = !touching && self.coyote_left <= 0.0;
+            let lunge_ok = self.air_lunge_ready && !self.is_lunging() && !self.slamming;
+            if airborne && lunge_ok && !Self::about_to_land(blob, level, self.params.jump_buffer) {
+                self.lunge_buffer_left = self.params.lunge_buffer;
+            } else {
+                self.buffer_left = self.params.jump_buffer;
+            }
         }
         if intent.lunge_pressed {
             self.lunge_buffer_left = self.params.lunge_buffer;
@@ -310,12 +327,22 @@ impl Controller {
                     };
                     direction = Vec2::new(side, 0.0);
                 }
-                direction = self.assist_aim(blob.center(), direction, targets, touching);
+                direction = self
+                    .assist_aim(
+                        blob.center(),
+                        direction,
+                        targets,
+                        touching,
+                        self.params.aim_assist_angle,
+                    )
+                    .unwrap_or(direction);
                 if direction.x.abs() > 0.1 {
                     self.facing = direction.x.signum();
                 }
                 self.lunge_left = self.params.lunge_time;
                 self.lunge_direction = direction;
+                self.lunge_speed = self.params.lunge_speed;
+                self.lunge_power = 0.0;
                 events.push(Event::Lunged { direction });
             }
         }
@@ -331,7 +358,7 @@ impl Controller {
                 let k = self.coil_power();
                 blob.scale = 1.0 + (self.params.coil_min_scale - 1.0) * k;
             } else {
-                self.release_coil(blob, intent.aim, &mut events);
+                self.release_coil(blob, intent.aim, targets, &mut events);
             }
         } else if self.buffer_left > 0.0
             && anchored
@@ -374,7 +401,7 @@ impl Controller {
 
         if self.is_lunging() {
             blob.gravity_scale = 0.0;
-            blob.set_velocity(self.lunge_direction * self.params.lunge_speed);
+            blob.set_velocity(self.lunge_direction * self.lunge_speed);
         }
 
         let impact = blob.velocity();
@@ -406,22 +433,55 @@ impl Controller {
         events
     }
 
-    /// Bends `direction` toward the closest target in the assist cone, so a
-    /// roughly aimed lunge still connects.
-    fn assist_aim(&self, from: Vec2, direction: Vec2, targets: &[Vec2], touching: bool) -> Vec2 {
-        let p = &self.params;
+    /// The direction to the closest target within `angle` of `direction` and
+    /// in assist range, so a roughly aimed lunge still connects.
+    fn assist_aim(
+        &self,
+        from: Vec2,
+        direction: Vec2,
+        targets: &[Vec2],
+        touching: bool,
+        angle: f32,
+    ) -> Option<Vec2> {
         targets
             .iter()
             .map(|t| *t - from)
-            .filter(|d| d.length() <= p.aim_assist_range)
+            .filter(|d| d.length() <= self.params.aim_assist_range)
             .filter_map(|d| d.try_normalize().map(|n| (d.length(), n)))
-            .filter(|(_, n)| n.angle_to(direction).abs() <= p.aim_assist_angle)
+            .filter(|(_, n)| n.angle_to(direction).abs() <= angle)
             .filter(|(_, n)| !touching || n.y >= -0.05)
             .min_by(|a, b| a.0.total_cmp(&b.0))
-            .map_or(direction, |(_, n)| n)
+            .map(|(_, n)| n)
     }
 
-    fn release_coil(&mut self, blob: &mut Blob, aim: Vec2, events: &mut Vec<Event>) {
+    /// True if a surface is close enough below a falling blob that it will
+    /// land within `time`. A jump pressed then is a buffered jump, not a lunge.
+    fn about_to_land(blob: &Blob, level: &Level, time: f32) -> bool {
+        let fall = (-blob.velocity().y).max(0.0);
+        let reach = fall * time + 0.2;
+        let bottom = blob.center() - Vec2::Y * blob.params.radius;
+        (1..=4).any(|k| {
+            let p = bottom - Vec2::Y * reach * k as f32 / 4.0;
+            level
+                .solids
+                .iter()
+                .any(|s| s.penetration(p, 0.05).is_some())
+        })
+    }
+
+    /// Extra damage share for the current lunge: 0 for a plain lunge, up to 1
+    /// for a lunge launched from a full coil.
+    pub fn lunge_power(&self) -> f32 {
+        self.lunge_power
+    }
+
+    fn release_coil(
+        &mut self,
+        blob: &mut Blob,
+        aim: Vec2,
+        targets: &[Vec2],
+        events: &mut Vec<Event>,
+    ) {
         let power = self.coil_power();
         self.coil = None;
         blob.scale = 1.0;
@@ -433,8 +493,23 @@ impl Controller {
             _ => (normal + Vec2::Y * 0.5).normalize_or(normal),
         };
         let speed = self.params.jump_speed * (1.0 + (self.params.coil_max_power - 1.0) * power);
-        blob.set_velocity(direction * speed);
         blob.unstick();
+        // An enemy near where the launch is headed turns it into a lunge.
+        let cone = self.params.coil_lunge_angle;
+        if let Some(toward) = self.assist_aim(blob.center(), direction, targets, true, cone) {
+            self.lunge_left = self.params.lunge_time;
+            self.lunge_direction = toward;
+            self.lunge_speed = speed.max(self.params.lunge_speed);
+            self.lunge_power = power;
+            self.lunge_cooldown_left = self.params.lunge_cooldown;
+            if toward.x.abs() > 0.1 {
+                self.facing = toward.x.signum();
+            }
+            blob.set_velocity(toward * self.lunge_speed);
+            events.push(Event::Lunged { direction: toward });
+        } else {
+            blob.set_velocity(direction * speed);
+        }
         self.buffer_left = 0.0;
         self.coyote_left = 0.0;
         self.rising = false;

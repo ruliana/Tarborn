@@ -1,0 +1,90 @@
+// Camera tuning for Tarborn. The game reloads this file while it runs:
+// save and the change shows up within half a second. Delete a line to fall
+// back to its built-in default. Point TARBORN_CAMERA at another file to
+// keep alternate tunings side by side. C toggles all effects in game.
+//
+// Units: metres and seconds unless noted. "Spring time" is how long a
+// smooth transition takes to settle (bigger = lazier, never snaps).
+(
+    effects: true,
+
+    follow: (
+        rate_x: 6.0,            // per second; how hard the camera chases horizontally
+        rate_y: 4.5,            // same, vertically
+        lag_compensation: 0.8,  // 0 = camera trails at speed, 1 = no trail
+    ),
+
+    look_ahead: (
+        seconds: 0.25,     // lead by where the blob will be this far ahead
+        vertical: 0.35,    // fraction of vertical lead kept
+        max_x: 3.0,        // longest lead, metres
+        max_y: 1.5,
+        min_speed: 3.0,    // m/s: no lead below this...
+        full_speed: 10.0,  // ...full lead from here
+        smooth_time: 0.45, // spring time for the lead
+    ),
+
+    zoom: (
+        arena: 1.6,        // base orthographic scale per room (bigger shows more)
+        training: 1.0,
+
+        speed_rise_rate: 4.0,  // per second; speed smoothing while speeding up
+        speed_fall_rate: 2.0,  // ...and while slowing
+        speed_start: 8.0,      // m/s: no zoom-out below this...
+        speed_full: 20.0,      // ...full zoom-out from here
+        speed_out: 0.2,        // full zoom-out: show 20% more
+        speed_curve: 1.5,      // ramp shape: 1 linear, 2 eases in
+        speed_hold: 0.6,       // seconds to stay wide after slowing down
+        speed_out_time: 0.5,   // spring time zooming out
+        speed_in_time: 0.9,    // spring time zooming back in
+
+        grip_in: 0.07,         // gripping shows 7% less
+        grip_delay: 0.2,       // seconds of Grip before it starts (taps don't twitch)
+        grip_in_time: 0.45,    // spring time zooming in
+        grip_out_time: 0.35,   // spring time letting go
+
+        max_rate: 0.5,         // hard cap: any zoom moves at most 50% of base per second
+        min_factor: 0.8,       // overall zoom stays within these multiples of base
+        max_factor: 1.4,
+    ),
+
+    shake: (
+        scale: 1.0,           // master multiplier for shake and kick (0 = off)
+        decay: 1.6,           // trauma lost per second (trauma is 0..1)
+        exponent: 2.0,        // shake = trauma^exponent: small hits subtle, big ones violent
+        max_offset: 14.0,     // screen pixels at full trauma
+        max_angle: 1.2,       // degrees of roll at full trauma
+        frequency: 22.0,      // wiggles per second
+        kick_frequency: 4.0,  // Hz; directional push that springs back
+        kick_damping: 0.6,    // 1 = no overshoot, lower wobbles
+        kick_max: 18.0,       // screen pixels
+    ),
+
+    // Trauma each event adds (0..1). Events away from the blob fade out
+    // between `near` and `far` metres. Kicks are in screen pixels.
+    trauma: (
+        hit_lunge: 0.3,
+        hit_slam: 0.45,
+        hit_shockwave: 0.2,
+        hit_pogo: 0.2,
+        hit_impact: 0.25,
+        kill: 0.15,           // extra on a kill
+        slam: 0.25,           // slam landing, plus slam_per_speed per m/s
+        slam_per_speed: 0.01,
+        blocked: 0.2,         // shield block
+        struck: 0.2,          // enemy hurt by a thrown body, spit, or another enemy
+        quake: 0.5,           // brute ground slam
+        player_hurt: 0.5,
+        player_died: 0.7,
+        thrown: 0.08,
+        grabbed: 0.1,
+        bounced: 0.0,
+        launched: 0.05,       // times (1 + charge)
+        near: 4.0,
+        far: 16.0,
+        kick_hit: 6.0,        // along the hit
+        kick_slam: 6.0,       // downward, plus kick_slam_per_speed per m/s
+        kick_slam_per_speed: 0.25,
+        kick_hurt: 8.0,
+    ),
+)

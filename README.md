@@ -33,6 +33,14 @@ On Linux you need the usual Bevy system packages first:
 sudo apt install libasound2-dev libudev-dev libwayland-dev libxkbcommon-dev pkg-config
 ```
 
+## Camera tuning
+
+The camera (look-ahead, zoom out at speed, zoom in while gripping, screen
+shake on impacts) is tuned in [`camera.ron`](camera.ron) at the repo root.
+The game reloads it while running: edit, save, and the change shows within
+half a second. A typo keeps the last good tuning and logs the error. Set
+`TARBORN_CAMERA=path/to/other.ron` to try an alternate tuning.
+
 ## Controls
 
 Two buttons, plus the stick:
@@ -46,6 +54,7 @@ Two buttons, plus the stick:
 | Switch room (arena / training) | T |                          |
 | Mute    | M                      |                                 |
 | Cycle look (lines / Pitch / dithered) | V |                    |
+| Camera effects on/off (A/B) | C |                            |
 
 Two verbs: **Grip shrinks**, **Jump expands**.
 

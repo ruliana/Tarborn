@@ -126,8 +126,9 @@ fn read_input(
     if any_key(&[KeyCode::ArrowDown, KeyCode::KeyS]) {
         aim.y -= 1.0;
     }
-    // Two buttons: Jump (jump, air lunge, slam, hold to bounce) and Grip
-    // (cling, and with Jump, coil).
+    // Two verbs. Grip shrinks (small, sticky, charging). Jump expands: jump,
+    // burst when shrunk, lunge at enemies in the air, slam with down, hold to
+    // bounce, throw while holding an enemy.
     let jump_keys = [KeyCode::Space, KeyCode::KeyJ];
     let mut jump_pressed = keys.any_just_pressed(jump_keys);
     let mut jump_held = keys.any_pressed(jump_keys);
@@ -288,6 +289,14 @@ fn draw(
                 game.enemy_position(i, alpha),
                 time.elapsed_secs(),
             );
+            // A tar ring on an enemy that is held or flying after a throw.
+            if enemy.held || enemy.thrown {
+                gizmos.circle_2d(
+                    game.enemy_position(i, alpha) * PIXELS_PER_METER,
+                    (enemy.radius + 0.12) * PIXELS_PER_METER,
+                    Color::srgb(0.45, 0.85, 0.3),
+                );
+            }
         }
     }
 
@@ -330,9 +339,9 @@ fn draw(
         Color::srgb(0.4, 0.4, 0.4)
     } else if sim.controller.invulnerable() {
         Color::WHITE
-    } else if sim.controller.is_coiling() {
-        // Green deepening to red as the coil charges.
-        let k = sim.controller.coil_power();
+    } else if sim.controller.is_shrunk() {
+        // Green deepening to red as the shrink charges.
+        let k = sim.controller.charge();
         Color::srgb(0.45 + 0.5 * k, 0.85 - 0.6 * k, 0.3)
     } else if sim.player_invulnerable() && blink {
         Color::srgb(0.95, 0.3, 0.3)

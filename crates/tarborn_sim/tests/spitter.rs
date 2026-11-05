@@ -66,28 +66,21 @@ fn a_spitter_aims_then_shoots_the_player() {
 #[test]
 fn shrinking_makes_spit_miss() {
     let mut sim = with_spitter(7.0);
-    // Wait until it fires, then coil (sticky + hold jump) and hold it.
+    // Wait until it fires, holding Grip: the blob stays shrunk.
     while sim.projectiles.is_empty() {
         sim.step(Intent {
             modes: STICKY,
             ..Default::default()
         });
     }
-    let mut events = sim.step(Intent {
-        jump_pressed: true,
-        jump_held: true,
-        modes: STICKY,
-        ..Default::default()
-    });
-    events.extend(run(
+    let events = run(
         &mut sim,
         Intent {
-            jump_held: true,
             modes: STICKY,
             ..Default::default()
         },
         0.7,
-    ));
+    );
     assert!(
         events.iter().any(|e| matches!(e, Event::Dodged { .. })),
         "{events:?}"
@@ -104,16 +97,9 @@ fn shrinking_makes_a_guard_swing_miss() {
     guard.state = State::Defending;
     guard.target = Some(sim.blob.center());
     sim.enemies.push(guard);
-    sim.step(Intent {
-        jump_pressed: true,
-        jump_held: true,
-        modes: STICKY,
-        ..Default::default()
-    });
     let events = run(
         &mut sim,
         Intent {
-            jump_held: true,
             modes: STICKY,
             ..Default::default()
         },
@@ -128,25 +114,18 @@ fn shrinking_makes_a_guard_swing_miss() {
 
 #[test]
 fn shrink_dodge_then_launch_into_the_opening() {
-    // The combo: shrink under the shot, release to launch at the spitter
-    // while it recovers, for double damage.
-    let mut sim = with_spitter(5.0);
+    // The combo: shrink under the shot, then expand (Jump) to burst at the
+    // spitter while it recovers, for double damage.
+    let mut sim = with_spitter(4.5);
     while sim.projectiles.is_empty() {
         sim.step(Intent {
             modes: STICKY,
             ..Default::default()
         });
     }
-    sim.step(Intent {
-        jump_pressed: true,
-        jump_held: true,
-        modes: STICKY,
-        ..Default::default()
-    });
     run(
         &mut sim,
         Intent {
-            jump_held: true,
             modes: STICKY,
             ..Default::default()
         },
@@ -156,19 +135,24 @@ fn shrink_dodge_then_launch_into_the_opening() {
     let toward = (sim.enemies[0].position - sim.blob.center()).normalize();
     let mut events = sim.step(Intent {
         aim: toward,
+        jump_pressed: true,
         modes: STICKY,
         ..Default::default()
     });
     events.extend(run(&mut sim, Intent::default(), 0.4));
-    let launched = events.iter().any(|e| matches!(e, Event::Launched { .. }));
-    assert!(launched, "{events:?}");
     let hit = events.iter().find_map(|e| match e {
         Event::Hit { kind, damage, .. } => Some((*kind, *damage)),
         _ => None,
     });
-    let (kind, damage) = hit.expect("the launch missed");
-    assert_eq!(kind, HitKind::Impact);
-    let base = sim.combat.impact_min_damage;
+    let (kind, damage) = hit.unwrap_or_else(|| {
+        panic!(
+            "the burst missed: {events:?} {:?} {:?}",
+            sim.blob.center(),
+            sim.enemies[0].position
+        )
+    });
+    assert_eq!(kind, HitKind::Lunge, "{events:?}");
+    let base = sim.combat.lunge_damage;
     assert!(damage >= base * 2.0, "no recovery bonus: {damage}");
 }
 

@@ -107,6 +107,12 @@ pub struct Enemy {
     turn_wait: f32,
     /// Set for one tick when it fires: the direction of the shot.
     pub fire: Option<Vec2>,
+    /// The player is holding it. It can't act, and the simulation moves it.
+    pub held: bool,
+    /// Flying after a throw: it hurts whatever it hits.
+    pub thrown: bool,
+    /// Fastest speed into a surface during the last step.
+    pub impact: f32,
 }
 
 /// Per-kind numbers.
@@ -219,6 +225,9 @@ impl Enemy {
             walk: 0.0,
             turn_wait: 0.0,
             fire: None,
+            held: false,
+            thrown: false,
+            impact: 0.0,
         }
     }
 
@@ -240,6 +249,17 @@ impl Enemy {
 
     pub fn alive(&self) -> bool {
         self.respawn_left.is_none()
+    }
+
+    /// Whether a grab from `direction` (the way the lunge travels) can latch on.
+    /// A guard's shield stops grabs from the front too.
+    pub fn grabbable(&self, direction: Vec2) -> bool {
+        let shield_up = matches!(
+            self.state,
+            State::Defending | State::Attacking(AttackPhase::Windup)
+        );
+        let from_front = direction.x * self.facing < -0.2;
+        !(self.kind == EnemyKind::Guard && shield_up && from_front)
     }
 
     /// True while the guard's swing can hurt.
@@ -349,6 +369,15 @@ impl Enemy {
         if !self.alive() {
             return;
         }
+        if self.held || self.thrown {
+            // Helpless: stays dizzy until it lands and recovers.
+            self.walk = 0.0;
+            if self.state != State::Prone {
+                self.state = State::Dizzy;
+                self.state_time = 0.0;
+            }
+            return;
+        }
         self.state_time += dt;
         if senses.sees_player {
             self.target = Some(senses.player);
@@ -388,6 +417,7 @@ impl Enemy {
             }
             State::Surprised if self.state_time > SURPRISE_TIME => self.set_state(State::Fleeing),
             State::Prone if self.state_time > PRONE_TIME => self.set_state(State::Fleeing),
+            State::Dizzy if self.state_time > DIZZY_TIME => self.set_state(State::Fleeing),
             State::Fleeing => {
                 if let Some(threat) = self.target.or(senses.heard) {
                     self.facing = (self.position.x - threat.x).signum();
@@ -638,11 +668,16 @@ impl Enemy {
             }
             return;
         }
+        if self.held {
+            return;
+        }
         let can_move = !matches!(
             self.state,
             State::Surprised | State::Dizzy | State::Prone | State::Attacking(_)
         );
-        if self.on_ground && can_move {
+        if self.thrown {
+            // A thrown body slides freely until it slows down or hits something.
+        } else if self.on_ground && can_move {
             let change = (self.walk - self.velocity.x).clamp(-WALK_ACCEL * dt, WALK_ACCEL * dt);
             self.velocity.x += change;
         } else if self.on_ground {
@@ -651,12 +686,14 @@ impl Enemy {
         self.velocity.y += GRAVITY * dt;
         self.position += self.velocity * dt;
         self.on_ground = false;
+        self.impact = 0.0;
         for solid in &level.solids {
             if let Some((normal, depth)) = solid.penetration(self.position, self.radius) {
                 self.position += normal * depth;
                 let into = self.velocity.dot(normal);
                 if into < 0.0 {
                     self.velocity -= normal * into;
+                    self.impact = self.impact.max(-into);
                 }
                 if normal.y > 0.5 {
                     self.on_ground = true;

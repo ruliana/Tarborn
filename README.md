@@ -43,25 +43,35 @@ Two buttons, plus the stick:
 | Grip    | K or Left Shift (hold) | Either trigger, or West (X / Square) |
 | Restart | R                      |                                 |
 
-Everything comes from those two:
+Two verbs: **Grip shrinks**, **Jump expands**.
 
+- **Grip** (hold) makes the blob small and sticky. It clings to walls and
+  ceilings (roll to crawl along them), makes no noise, dodges some attacks,
+  and charges up over 0.6 s.
 - **Jump** on a surface jumps instantly. Hold it to go higher.
-- **Jump in the air** lunges: a short, gravity-free burst in the aimed
-  direction (or the way you face). You are invulnerable during it, and it
-  snaps toward an enemy within 30°. One per air time, refilled by touching a
-  surface or by hitting something. A press just before landing is a buffered
-  jump instead.
+- **Jump while shrunk** on a surface bursts: a lunge at a nearby enemy, or,
+  with none near, a launch off the surface along the aim. Both are stronger
+  with more charge (up to 2x).
+- **Jump in the air** lunges at an enemy within 5 m (in the aimed 60° cone if
+  you aim). With no enemy near, it does nothing extra. One per air time,
+  refilled by touching a surface or by hitting something. You are
+  invulnerable during a lunge.
 - **Down + Jump in the air** slams straight down.
-- **Holding Jump** keeps the blob bouncy: hold through a landing to rebound,
-  land on an enemy to pogo off it, slam while holding to launch high.
-  Release before landing to land soft.
-- **Grip** clings to walls and ceilings; roll to crawl along them. It is
-  silent, so it is also how you sneak.
-- **Grip + hold Jump** on a surface coils: the blob shrinks, dodging some
-  attacks. Release to launch, faster the longer you held (up to 2x a jump at
-  0.6 s), along the aim if you point away from or along the surface. If an
-  enemy is near where the launch is headed, it becomes a lunge at that enemy
-  that hits harder the longer you coiled.
+- **Holding Jump in the air** keeps the blob bouncy: hold through a landing to
+  rebound, slam while holding to launch high. Release before landing to land
+  soft.
+
+What you hold when a lunge arrives decides how it ends:
+
+| Holding    | Result                                                      |
+|------------|-------------------------------------------------------------|
+| nothing    | **Hit.** Full lunge damage.                                 |
+| Jump       | **Bounce off** (pogo): less damage, launches you back up.   |
+| Grip       | **Grab.** You hold the enemy; it is dizzy and helpless.     |
+
+While holding an enemy, **Jump throws it** along the aim (harder with more
+charge), and **releasing Grip drops it**. A guard with its shield up can't be
+grabbed from the front.
 
 The blob flashes white while invulnerable.
 
@@ -72,12 +82,14 @@ purple circles), guards (blue rectangles), a spitter (orange diamond) and a
 strip of spikes.
 
 - Your body is the weapon. A lunge hits for a fixed amount (more from a
-  coil), a slam hits whatever it lands on and sends out a shockwave, landing
+  charged burst), a slam hits whatever it lands on and sends out a shockwave, landing
   on an enemy with Jump held pogoes off it, and hitting anything at high
   speed hurts it.
 - Every hit freezes the world for a moment, knocks the target back, and
-  refreshes your lunge, so hits chain in the air. Lunges snap toward an enemy
-  within 30° of where you aim.
+  refreshes your lunge, so hits chain in the air.
+- Damage ignores sides. A thrown enemy hurts whatever it hits (and itself, if
+  it hits a wall hard), spit hits any enemy in its way, and a guard's swing
+  hurts other enemies too.
 - You have 5 health. Getting hurt costs one and makes you blink, invulnerable
   for a second. Kills drop tar (yellow) that heals one. At 0 the room restarts.
 
@@ -112,7 +124,7 @@ its head show it.
 
 - **Sight**: enemies see in front of them, not through walls. Guards see
   8 m, grubs 4 m. Spotting you within 3 m startles them.
-- **Noise**: jumps, lunges, launches, bounces, hits and slams make noise of
+- **Noise**: jumps, lunges, launches, bounces, hits, throws and slams make noise of
   growing reach (the white rings). Fast rolling makes a little. Sticky
   movement makes none, so crawling is how you sneak.
 - **Guard**: patrols, blocks from the front even while winding up, and turns
@@ -122,7 +134,6 @@ its head show it.
 - **Spitter** (orange diamond): keeps its distance, aims for 0.6 s (a line
   grows toward you), then spits a glob that flies straight. It backs away if
   you get within 3 m, and takes double damage while recovering from a shot.
-- **Shrink to dodge**: while you are coiling (Grip + hold Jump), spit and
-  guard swings pass you by. The combo is to shrink under the attack, then
-  release to launch into the enemy while it recovers. A coil can launch along
-  the surface too, so on the floor you can aim straight at the enemy.
+- **Shrink to dodge**: while Grip is held, spit and guard swings pass you by.
+  The combo is to shrink under the attack, then press Jump to burst into the
+  enemy while it recovers.

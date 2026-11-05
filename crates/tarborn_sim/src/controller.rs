@@ -1,19 +1,21 @@
 //! Turns player intent into blob actions, with the forgiveness that makes a
-//! platformer feel responsive: jump and lunge buffering, coyote time and
-//! variable jump height.
+//! platformer feel responsive: jump buffering, coyote time and variable jump
+//! height.
 //!
-//! The move set:
-//! - **Jump** off floors (and walls or ceilings while sticky).
-//! - **Lunge**: a short, gravity-free burst in the aimed direction. It is the
-//!   dodge and the attack in one, and the blob is invulnerable during it. One
-//!   lunge in the air, refilled by touching any surface or by
-//!   [`Controller::refresh_lunge`] (hitting an enemy).
-//! - **Coil**: while sticky and anchored to a surface, holding jump shrinks
-//!   the blob instead of jumping; releasing launches it off the surface,
-//!   faster the longer it was held, in the aimed direction if the stick
-//!   points away from the surface.
-//! - **Slam**: lunge aimed down while airborne. Drives straight down until it
-//!   lands. With bouncy held, the landing rebounds high.
+//! Two verbs, two buttons:
+//! - **Grip (hold) shrinks.** The blob gets small and sticky, makes no noise,
+//!   dodges some attacks, and charges up the longer it stays shrunk.
+//! - **Jump (press) expands**, the instant it is pressed:
+//!   - at normal size on a surface: a jump (hold for height);
+//!   - shrunk on a surface: a burst, a lunge at a nearby enemy or, with none
+//!     near, a launch off the surface, stronger with more charge;
+//!   - in the air: a lunge at a nearby enemy, or with down held, a slam.
+//! - **Holding Jump in the air** keeps the body bouncy.
+//!
+//! A **lunge** is a short, gravity-free dash at an enemy, invulnerable while
+//! it lasts. What the player holds when it arrives decides what happens (see
+//! `combat`): nothing for a hit, Jump to bounce off, Grip to grab. One lunge
+//! per air time, refilled by touching a surface or by hitting something.
 
 use glam::Vec2;
 
@@ -26,14 +28,16 @@ pub struct Intent {
     /// -1 (left) to 1 (right).
     pub roll: f32,
     /// Stick direction, including up and down. Its length is at most 1.
-    /// Zero means "the way I'm facing".
     pub aim: Vec2,
     /// The jump button went down since the previous tick.
     pub jump_pressed: bool,
     /// The jump button is down right now.
     pub jump_held: bool,
-    /// The lunge button went down since the previous tick.
+    /// Asks for an aimed dash directly, whether or not an enemy is near.
+    /// The two-button controls never set it; it is for tests and scripts.
     pub lunge_pressed: bool,
+    /// `sticky` is Grip. `bouncy` is worked out from Jump by the simulation,
+    /// but can be forced.
     pub modes: TarModes,
 }
 
@@ -58,19 +62,24 @@ pub struct FeelParams {
     /// Aim more downward than this (aim.y below -this) makes an air lunge a slam.
     pub slam_aim: f32,
     pub slam_speed: f32,
-    /// Holding a coil this long reaches full power.
+    /// Staying shrunk this long reaches full charge.
     pub coil_time: f32,
-    /// Launch speed at full coil, as a multiple of `jump_speed`.
+    /// Launch and lunge speed at full charge, as a multiple of normal.
     pub coil_max_power: f32,
-    /// How small the blob gets at full coil.
+    /// How small the blob gets at full charge. It drops most of the way there
+    /// as soon as Grip goes down.
     pub coil_min_scale: f32,
-    /// A lunge snaps toward a target within this distance...
-    pub aim_assist_range: f32,
-    /// ...and within this angle (radians) of where it was aimed.
+    /// Jump lunges at enemies within this distance...
+    pub lunge_range: f32,
+    /// ...and, when the stick is pushed, within this angle (radians) of it.
+    pub lunge_aim_angle: f32,
+    /// Longest a lunge can last while it closes in on a far enemy.
+    pub lunge_max_time: f32,
+    /// Jump held at least this long when a lunge arrives counts as "held",
+    /// so a quick tap still hits rather than bounces.
+    pub hold_threshold: f32,
+    /// A forced (scripted) dash snaps toward targets within this angle.
     pub aim_assist_angle: f32,
-    /// A coil released with an enemy within this angle of its direction (and
-    /// in assist range) becomes a lunge at that enemy.
-    pub coil_lunge_angle: f32,
 }
 
 impl Default for FeelParams {
@@ -89,10 +98,12 @@ impl Default for FeelParams {
             slam_speed: 24.0,
             coil_time: 0.6,
             coil_max_power: 2.0,
-            coil_min_scale: 0.6,
-            aim_assist_range: 5.0,
+            coil_min_scale: 0.65,
+            lunge_range: 5.0,
+            lunge_aim_angle: 60f32.to_radians(),
+            lunge_max_time: 0.4,
+            hold_threshold: 0.1,
             aim_assist_angle: 30f32.to_radians(),
-            coil_lunge_angle: 45f32.to_radians(),
         }
     }
 }
@@ -104,19 +115,20 @@ pub struct Controller {
     coyote_left: f32,
     last_support: Vec2,
     rising: bool,
-    /// 1 for right, -1 for left: where an unaimed lunge goes.
+    /// 1 for right, -1 for left.
     facing: f32,
     lunge_buffer_left: f32,
     lunge_left: f32,
     lunge_direction: Vec2,
     lunge_cooldown_left: f32,
     air_lunge_ready: bool,
-    /// Speed of the current lunge.
     lunge_speed: f32,
     lunge_power: f32,
     slamming: bool,
-    /// Seconds spent coiling, while coiling.
-    coil: Option<f32>,
+    /// Seconds shrunk, while Grip is held.
+    shrunk: Option<f32>,
+    /// Seconds Jump has been held without a break.
+    jump_hold: f32,
 }
 
 impl Default for Controller {
@@ -135,8 +147,10 @@ pub enum Event {
         direction: Vec2,
     },
     SlamStarted,
-    CoilStarted,
-    /// A coil was released. `power` is 0 for a tap, 1 for a full coil.
+    /// Grip went down: the blob shrank.
+    Shrank,
+    /// A shrunk blob expanded off a surface with no enemy near. `power` is
+    /// 0 right after shrinking, 1 after a full charge.
     Launched {
         direction: Vec2,
         power: f32,
@@ -161,7 +175,26 @@ pub enum Event {
         enemy: usize,
         at: Vec2,
     },
-    /// An enemy attack passed through the shrunk (coiling) blob.
+    /// A lunge with Grip held latched onto enemy number `enemy`.
+    Grabbed {
+        enemy: usize,
+    },
+    /// The held enemy was thrown (Jump) or dropped (Grip released).
+    Thrown {
+        enemy: usize,
+        speed: f32,
+    },
+    Dropped {
+        enemy: usize,
+    },
+    /// Something other than the player hurt enemy number `enemy`: a thrown
+    /// body, spit, or another enemy's swing.
+    Struck {
+        enemy: usize,
+        damage: f32,
+        at: Vec2,
+    },
+    /// An enemy attack passed through the shrunk blob.
     Dodged {
         at: Vec2,
     },
@@ -187,7 +220,8 @@ pub enum HitKind {
     Slam,
     /// Caught in a slam's shockwave without being touched.
     Shockwave,
-    /// Landing on an enemy with bouncy held.
+    /// Landing on an enemy with Jump held, or reaching it in a lunge with
+    /// Jump still held: bounce off it.
     Pogo,
     /// Rolling or bouncing into an enemy fast.
     Impact,
@@ -210,7 +244,8 @@ impl Controller {
             lunge_speed: 0.0,
             lunge_power: 0.0,
             slamming: false,
-            coil: None,
+            shrunk: None,
+            jump_hold: 0.0,
         }
     }
 
@@ -218,14 +253,27 @@ impl Controller {
         self.lunge_left > 0.0
     }
 
-    pub fn is_coiling(&self) -> bool {
-        self.coil.is_some()
+    /// Grip is held: the blob is small and sticky.
+    pub fn is_shrunk(&self) -> bool {
+        self.shrunk.is_some()
     }
 
-    /// 0 when not coiling or just started, 1 at full power.
-    pub fn coil_power(&self) -> f32 {
-        self.coil
+    /// 0 just after shrinking, 1 after a full charge.
+    pub fn charge(&self) -> f32 {
+        self.shrunk
             .map_or(0.0, |t| (t / self.params.coil_time).min(1.0))
+    }
+
+    /// Spends the charge (after a burst or a throw); the blob stays shrunk.
+    pub fn spend_charge(&mut self) {
+        if self.shrunk.is_some() {
+            self.shrunk = Some(0.0);
+        }
+    }
+
+    /// True when Jump has been held long enough to count as a hold, not a tap.
+    pub fn jump_is_held(&self) -> bool {
+        self.jump_hold >= self.params.hold_threshold
     }
 
     pub fn is_slamming(&self) -> bool {
@@ -237,9 +285,15 @@ impl Controller {
         self.is_lunging() || self.slamming
     }
 
-    /// The direction an unaimed lunge goes: 1 right, -1 left.
+    /// 1 for right, -1 for left.
     pub fn facing(&self) -> f32 {
         self.facing
+    }
+
+    /// Extra damage share for the current lunge: 0 for a plain lunge, up to 1
+    /// for one burst from a full charge.
+    pub fn lunge_power(&self) -> f32 {
+        self.lunge_power
     }
 
     /// Makes the next lunge available right away, even in the air. Hitting an
@@ -257,7 +311,7 @@ impl Controller {
         self.slamming = false;
     }
 
-    /// Advances one tick. `targets` are points a lunge may snap toward.
+    /// Advances one tick. `targets` are the enemies a lunge can go for.
     pub fn step(
         &mut self,
         blob: &mut Blob,
@@ -279,115 +333,56 @@ impl Controller {
         if touching && !self.is_lunging() {
             self.air_lunge_ready = true;
         }
+        self.jump_hold = if intent.jump_held && !intent.jump_pressed {
+            self.jump_hold + dt
+        } else {
+            0.0
+        };
+
+        // Grip shrinks.
+        if intent.modes.sticky {
+            if self.shrunk.is_none() {
+                events.push(Event::Shrank);
+            }
+            self.shrunk = Some(self.shrunk.unwrap_or(0.0) + dt);
+            let size = 0.4 + 0.6 * self.charge();
+            blob.scale = 1.0 + (self.params.coil_min_scale - 1.0) * size;
+        } else if self.shrunk.take().is_some() {
+            blob.scale = 1.0;
+        }
+
+        // Jump expands.
+        let on_surface = touching || self.coyote_left > 0.0;
+        let free = !self.is_lunging() && !self.slamming;
         if intent.jump_pressed {
-            // In the air, jump lunges, unless the press is a buffered jump
-            // for a landing that is about to happen.
-            let airborne = !touching && self.coyote_left <= 0.0;
-            let lunge_ok = self.air_lunge_ready && !self.is_lunging() && !self.slamming;
-            if airborne && lunge_ok && !Self::about_to_land(blob, level, self.params.jump_buffer) {
-                self.lunge_buffer_left = self.params.lunge_buffer;
+            if on_surface {
+                self.buffer_left = self.params.jump_buffer;
+            } else if free && intent.aim.y < -self.params.slam_aim {
+                self.start_slam(blob, &mut events);
+            } else if let Some(target) = self.pick_target(blob.center(), intent.aim, targets)
+                && free
+                && self.air_lunge_ready
+                && self.lunge_cooldown_left <= 0.0
+            {
+                self.air_lunge_ready = false;
+                self.lunge_at(blob, target, 0.0, &mut events);
             } else {
+                // Maybe about to land: keep it as a buffered jump.
                 self.buffer_left = self.params.jump_buffer;
             }
         }
         if intent.lunge_pressed {
             self.lunge_buffer_left = self.params.lunge_buffer;
         }
+        self.forced_lunge(blob, intent, targets, touching, &mut events);
 
-        // Lunge or slam.
-        let can_lunge = !self.is_lunging()
-            && !self.slamming
-            && self.lunge_cooldown_left <= 0.0
-            && (touching || self.air_lunge_ready);
-        if self.lunge_buffer_left > 0.0 && can_lunge {
-            self.lunge_buffer_left = 0.0;
-            self.lunge_cooldown_left = self.params.lunge_cooldown;
-            self.rising = false;
-            if !touching {
-                self.air_lunge_ready = false;
-            }
-            blob.unstick();
-            if !touching && intent.aim.y < -self.params.slam_aim {
-                self.slamming = true;
-                let v = blob.velocity();
-                blob.set_velocity(Vec2::new(v.x * 0.2, -self.params.slam_speed));
-                events.push(Event::SlamStarted);
+        // A jump (buffered or not) on a surface: a burst if shrunk, else a jump.
+        if self.buffer_left > 0.0 && self.coyote_left > 0.0 && !self.slamming {
+            if self.is_shrunk() {
+                self.burst(blob, intent.aim, targets, &mut events);
             } else {
-                let mut direction = if intent.aim.length() > 0.3 {
-                    intent.aim.normalize()
-                } else {
-                    Vec2::new(self.facing, 0.0)
-                };
-                if touching && direction.y < 0.0 {
-                    // Can't lunge into the floor: go along it instead.
-                    let side = if direction.x.abs() > 0.1 {
-                        direction.x.signum()
-                    } else {
-                        self.facing
-                    };
-                    direction = Vec2::new(side, 0.0);
-                }
-                direction = self
-                    .assist_aim(
-                        blob.center(),
-                        direction,
-                        targets,
-                        touching,
-                        self.params.aim_assist_angle,
-                    )
-                    .unwrap_or(direction);
-                if direction.x.abs() > 0.1 {
-                    self.facing = direction.x.signum();
-                }
-                self.lunge_left = self.params.lunge_time;
-                self.lunge_direction = direction;
-                self.lunge_speed = self.params.lunge_speed;
-                self.lunge_power = 0.0;
-                events.push(Event::Lunged { direction });
+                self.jump(blob, &mut events);
             }
-        }
-
-        // Coil: anchored by sticky, a held jump shrinks instead of jumping.
-        let anchored = intent.modes.sticky && blob.touching_count() > 0;
-        if let Some(t) = self.coil {
-            if !intent.modes.sticky || !anchored && self.coyote_left <= 0.0 {
-                self.coil = None;
-                blob.scale = 1.0;
-            } else if intent.jump_held {
-                self.coil = Some(t + dt);
-                let k = self.coil_power();
-                blob.scale = 1.0 + (self.params.coil_min_scale - 1.0) * k;
-            } else {
-                self.release_coil(blob, intent.aim, targets, &mut events);
-            }
-        } else if self.buffer_left > 0.0
-            && anchored
-            && intent.jump_held
-            && !self.slamming
-            && !self.is_lunging()
-        {
-            self.buffer_left = 0.0;
-            self.coil = Some(0.0);
-            events.push(Event::CoilStarted);
-        }
-
-        // Jump. It cancels a lunge, keeping the lunge's momentum.
-        if self.buffer_left > 0.0 && self.coyote_left > 0.0 && !self.slamming && self.coil.is_none()
-        {
-            // Jump away from the surface, biased upward so wall jumps arc.
-            let direction = (self.last_support + Vec2::Y).normalize_or(Vec2::Y);
-            if self.is_lunging() {
-                self.end_lunge(blob, 1.0);
-            }
-            for v in &mut blob.velocities {
-                // Ignore any fall speed so a coyote jump is as tall as a normal one.
-                v.y = v.y.max(0.0);
-            }
-            blob.launch(direction * self.params.jump_speed);
-            self.buffer_left = 0.0;
-            self.coyote_left = 0.0;
-            self.rising = true;
-            events.push(Event::Jumped { direction });
         }
 
         if self.rising {
@@ -433,87 +428,160 @@ impl Controller {
         events
     }
 
-    /// The direction to the closest target within `angle` of `direction` and
-    /// in assist range, so a roughly aimed lunge still connects.
-    fn assist_aim(
-        &self,
-        from: Vec2,
-        direction: Vec2,
-        targets: &[Vec2],
-        touching: bool,
-        angle: f32,
-    ) -> Option<Vec2> {
-        targets
-            .iter()
-            .map(|t| *t - from)
-            .filter(|d| d.length() <= self.params.aim_assist_range)
-            .filter_map(|d| d.try_normalize().map(|n| (d.length(), n)))
-            .filter(|(_, n)| n.angle_to(direction).abs() <= angle)
-            .filter(|(_, n)| !touching || n.y >= -0.05)
-            .min_by(|a, b| a.0.total_cmp(&b.0))
-            .map(|(_, n)| n)
+    fn jump(&mut self, blob: &mut Blob, events: &mut Vec<Event>) {
+        // Jump away from the surface, biased upward so wall jumps arc.
+        let direction = (self.last_support + Vec2::Y).normalize_or(Vec2::Y);
+        if self.is_lunging() {
+            // Jump cancels a lunge, keeping its momentum.
+            self.end_lunge(blob, 1.0);
+        }
+        for v in &mut blob.velocities {
+            // Ignore any fall speed so a coyote jump is as tall as a normal one.
+            v.y = v.y.max(0.0);
+        }
+        blob.launch(direction * self.params.jump_speed);
+        self.buffer_left = 0.0;
+        self.coyote_left = 0.0;
+        self.rising = true;
+        events.push(Event::Jumped { direction });
     }
 
-    /// True if a surface is close enough below a falling blob that it will
-    /// land within `time`. A jump pressed then is a buffered jump, not a lunge.
-    fn about_to_land(blob: &Blob, level: &Level, time: f32) -> bool {
-        let fall = (-blob.velocity().y).max(0.0);
-        let reach = fall * time + 0.2;
-        let bottom = blob.center() - Vec2::Y * blob.params.radius;
-        (1..=4).any(|k| {
-            let p = bottom - Vec2::Y * reach * k as f32 / 4.0;
-            level
-                .solids
-                .iter()
-                .any(|s| s.penetration(p, 0.05).is_some())
-        })
-    }
-
-    /// Extra damage share for the current lunge: 0 for a plain lunge, up to 1
-    /// for a lunge launched from a full coil.
-    pub fn lunge_power(&self) -> f32 {
-        self.lunge_power
-    }
-
-    fn release_coil(
-        &mut self,
-        blob: &mut Blob,
-        aim: Vec2,
-        targets: &[Vec2],
-        events: &mut Vec<Event>,
-    ) {
-        let power = self.coil_power();
-        self.coil = None;
-        blob.scale = 1.0;
+    /// A shrunk blob expanding off a surface: a lunge at a nearby enemy, or a
+    /// launch, both stronger with more charge.
+    fn burst(&mut self, blob: &mut Blob, aim: Vec2, targets: &[Vec2], events: &mut Vec<Event>) {
+        let power = self.charge();
+        self.spend_charge();
+        self.buffer_left = 0.0;
+        self.coyote_left = 0.0;
+        self.rising = false;
+        blob.unstick();
+        if let Some(target) = self.pick_target(blob.center(), aim, targets)
+            && !self.is_lunging()
+        {
+            self.lunge_at(blob, target, power, events);
+            return;
+        }
         let normal = self.last_support;
-        // Aim away from or along the surface to pick the direction; otherwise leap
-        // off it, arcing upward from walls.
+        // Aim away from or along the surface to pick the direction; otherwise
+        // leap off it, arcing upward from walls.
         let direction = match aim.try_normalize() {
             Some(a) if a.dot(normal) > -0.2 => a,
             _ => (normal + Vec2::Y * 0.5).normalize_or(normal),
         };
         let speed = self.params.jump_speed * (1.0 + (self.params.coil_max_power - 1.0) * power);
-        blob.unstick();
-        // An enemy near where the launch is headed turns it into a lunge.
-        let cone = self.params.coil_lunge_angle;
-        if let Some(toward) = self.assist_aim(blob.center(), direction, targets, true, cone) {
-            self.lunge_left = self.params.lunge_time;
-            self.lunge_direction = toward;
-            self.lunge_speed = speed.max(self.params.lunge_speed);
-            self.lunge_power = power;
-            self.lunge_cooldown_left = self.params.lunge_cooldown;
-            if toward.x.abs() > 0.1 {
-                self.facing = toward.x.signum();
-            }
-            blob.set_velocity(toward * self.lunge_speed);
-            events.push(Event::Lunged { direction: toward });
-        } else {
-            blob.set_velocity(direction * speed);
-        }
-        self.buffer_left = 0.0;
-        self.coyote_left = 0.0;
-        self.rising = false;
+        blob.set_velocity(direction * speed);
         events.push(Event::Launched { direction, power });
+    }
+
+    fn start_slam(&mut self, blob: &mut Blob, events: &mut Vec<Event>) {
+        self.slamming = true;
+        self.rising = false;
+        blob.unstick();
+        let v = blob.velocity();
+        blob.set_velocity(Vec2::new(v.x * 0.2, -self.params.slam_speed));
+        events.push(Event::SlamStarted);
+    }
+
+    /// The closest enemy in lunge range, within the aim cone if the stick is
+    /// pushed.
+    fn pick_target(&self, from: Vec2, aim: Vec2, targets: &[Vec2]) -> Option<Vec2> {
+        let aim = aim.try_normalize().filter(|_| aim.length() > 0.3);
+        targets
+            .iter()
+            .copied()
+            .filter(|t| t.distance(from) <= self.params.lunge_range)
+            .filter(|t| {
+                aim.is_none_or(|a| (*t - from).angle_to(a).abs() <= self.params.lunge_aim_angle)
+            })
+            .min_by(|a, b| a.distance(from).total_cmp(&b.distance(from)))
+    }
+
+    /// Dashes at `target`, for as long as it takes to get there (capped).
+    fn lunge_at(&mut self, blob: &mut Blob, target: Vec2, power: f32, events: &mut Vec<Event>) {
+        let offset = target - blob.center();
+        let direction = offset.normalize_or(Vec2::new(self.facing, 0.0));
+        let speed = self.params.lunge_speed * (1.0 + (self.params.coil_max_power - 1.0) * power);
+        let time = (offset.length() / speed + 0.06)
+            .clamp(self.params.lunge_time, self.params.lunge_max_time);
+        self.start_lunge(blob, direction, speed, time, power, events);
+    }
+
+    fn start_lunge(
+        &mut self,
+        blob: &mut Blob,
+        direction: Vec2,
+        speed: f32,
+        time: f32,
+        power: f32,
+        events: &mut Vec<Event>,
+    ) {
+        self.lunge_left = time;
+        self.lunge_direction = direction;
+        self.lunge_speed = speed;
+        self.lunge_power = power;
+        self.lunge_cooldown_left = self.params.lunge_cooldown;
+        self.rising = false;
+        if direction.x.abs() > 0.1 {
+            self.facing = direction.x.signum();
+        }
+        blob.unstick();
+        blob.set_velocity(direction * speed);
+        events.push(Event::Lunged { direction });
+    }
+
+    /// The scripted dash from `Intent::lunge_pressed`: aimed, with a little
+    /// aim assist, and a slam when aimed down in the air.
+    fn forced_lunge(
+        &mut self,
+        blob: &mut Blob,
+        intent: Intent,
+        targets: &[Vec2],
+        touching: bool,
+        events: &mut Vec<Event>,
+    ) {
+        let ready = !self.is_lunging()
+            && !self.slamming
+            && self.lunge_cooldown_left <= 0.0
+            && (touching || self.air_lunge_ready);
+        if self.lunge_buffer_left <= 0.0 || !ready {
+            return;
+        }
+        self.lunge_buffer_left = 0.0;
+        if !touching {
+            self.air_lunge_ready = false;
+        }
+        if !touching && intent.aim.y < -self.params.slam_aim {
+            self.lunge_cooldown_left = self.params.lunge_cooldown;
+            self.start_slam(blob, events);
+            return;
+        }
+        let mut direction = if intent.aim.length() > 0.3 {
+            intent.aim.normalize()
+        } else {
+            Vec2::new(self.facing, 0.0)
+        };
+        if touching && direction.y < 0.0 {
+            // Can't dash into the floor: go along it instead.
+            let side = if direction.x.abs() > 0.1 {
+                direction.x.signum()
+            } else {
+                self.facing
+            };
+            direction = Vec2::new(side, 0.0);
+        }
+        let from = blob.center();
+        let assisted = targets
+            .iter()
+            .map(|t| *t - from)
+            .filter(|d| d.length() <= self.params.lunge_range)
+            .filter_map(|d| d.try_normalize().map(|n| (d.length(), n)))
+            .filter(|(_, n)| n.angle_to(direction).abs() <= self.params.aim_assist_angle)
+            .filter(|(_, n)| !touching || n.y >= -0.05)
+            .min_by(|a, b| a.0.total_cmp(&b.0))
+            .map(|(_, n)| n);
+        let direction = assisted.unwrap_or(direction);
+        let (speed, time) = (self.params.lunge_speed, self.params.lunge_time);
+        self.start_lunge(blob, direction, speed, time, 0.0, events);
     }
 
     fn end_lunge(&mut self, blob: &mut Blob, keep: f32) {

@@ -39,6 +39,8 @@ pub struct Sim {
     pub projectiles: Vec<Projectile>,
     /// Noises the player made last tick: where, and how far they carry.
     pub noises: Vec<(Vec2, f32)>,
+    /// The enemy held in the blob's grip, if any.
+    pub held: Option<usize>,
     pub health: u32,
     pub max_health: u32,
     pub dead: bool,
@@ -64,6 +66,7 @@ impl Sim {
             pickups: Vec::new(),
             noises: Vec::new(),
             projectiles: Vec::new(),
+            held: None,
             health: combat.max_health,
             max_health: combat.max_health,
             combat,
@@ -97,10 +100,10 @@ impl Sim {
         self.hitstop_left > 0.0
     }
 
-    /// While the blob is shrunk (coiling), some attacks pass it by: spit,
+    /// While the blob is shrunk (Grip held), some attacks pass it by: spit,
     /// and the guard's swing.
     pub fn player_shrunk(&self) -> bool {
-        self.controller.is_coiling()
+        self.controller.is_shrunk()
     }
 
     /// The player can't be hurt while lunging, slamming, or just after a hit.
@@ -121,21 +124,28 @@ impl Sim {
             return Vec::new();
         }
         intent.jump_pressed |= std::mem::take(&mut self.pending_jump);
-        // Holding jump keeps the body springy, unless gripping (then it coils).
+        // Holding jump keeps the body springy, unless gripping (then it shrinks).
         intent.modes.bouncy |= intent.jump_held && !intent.modes.sticky;
         intent.lunge_pressed |= std::mem::take(&mut self.pending_lunge);
 
+        let mut events = Vec::new();
+        // While holding an enemy, Jump throws it instead of jumping.
+        if self.held.is_some() && intent.jump_pressed {
+            intent.jump_pressed = false;
+            combat::throw(self, intent.aim, &mut events);
+        }
         let targets: Vec<Vec2> = self
             .enemies
             .iter()
-            .filter(|e| e.alive())
+            .filter(|e| e.alive() && !e.held && !e.thrown)
             .map(|e| e.position)
             .collect();
-        let mut events = self
-            .controller
-            .step(&mut self.blob, &self.level, intent, &targets, DT);
+        events.extend(
+            self.controller
+                .step(&mut self.blob, &self.level, intent, &targets, DT),
+        );
         self.hurt_left = (self.hurt_left - DT).max(0.0);
-        combat::resolve(self, intent.modes, &mut events);
+        combat::resolve(self, intent, &mut events);
         events
     }
 

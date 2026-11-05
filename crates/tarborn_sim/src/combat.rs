@@ -6,7 +6,7 @@
 
 use glam::Vec2;
 
-use crate::controller::{Event, HitKind};
+use crate::controller::{Event, HitKind, Intent};
 use crate::enemy::{GUARD_SWING_OFFSET, GUARD_SWING_RADIUS, HitOutcome, Senses, line_of_sight};
 use crate::{DT, Sim, TarModes};
 
@@ -34,6 +34,15 @@ pub struct CombatParams {
     pub hurt_invulnerability: f32,
     pub hurt_knockback: Vec2,
     pub pickup_radius: f32,
+    /// Speed of a thrown enemy, multiplied up to 2x by the shrink charge.
+    pub throw_speed: f32,
+    /// Damage a thrown body does: this plus `thrown_damage_per_speed` per m/s.
+    pub thrown_damage: f32,
+    pub thrown_damage_per_speed: f32,
+    /// A thrown body hitting a wall faster than this hurts itself.
+    pub splat_speed: f32,
+    pub spit_damage: f32,
+    pub swing_damage: f32,
 }
 
 impl Default for CombatParams {
@@ -57,12 +66,20 @@ impl Default for CombatParams {
             hurt_invulnerability: 1.0,
             hurt_knockback: Vec2::new(6.0, 10.0),
             pickup_radius: 0.4,
+            throw_speed: 13.0,
+            thrown_damage: 10.0,
+            thrown_damage_per_speed: 2.0,
+            splat_speed: 8.0,
+            spit_damage: 15.0,
+            swing_damage: 25.0,
         }
     }
 }
 
 /// Runs after the player's move each tick: enemy physics, hits, hazards, pickups.
-pub(crate) fn resolve(sim: &mut Sim, modes: TarModes, events: &mut Vec<Event>) {
+pub(crate) fn resolve(sim: &mut Sim, intent: Intent, events: &mut Vec<Event>) {
+    let modes = intent.modes;
+    carry(sim, intent, events);
     let slams: Vec<Vec2> = events
         .iter()
         .filter_map(|e| match e {
@@ -79,6 +96,7 @@ pub(crate) fn resolve(sim: &mut Sim, modes: TarModes, events: &mut Vec<Event>) {
     enemy_attacks(sim, events);
     spawn_projectiles(sim);
     move_projectiles(sim, events);
+    thrown_bodies(sim, events);
     for i in 0..sim.enemies.len() {
         player_hits(sim, i, modes, events);
     }
@@ -95,7 +113,7 @@ pub(crate) fn resolve(sim: &mut Sim, modes: TarModes, events: &mut Vec<Event>) {
 fn player_hits(sim: &mut Sim, i: usize, modes: TarModes, events: &mut Vec<Event>) {
     let p = &sim.combat;
     let enemy = &sim.enemies[i];
-    if !enemy.alive() || enemy.hit_cooldown > 0.0 {
+    if !enemy.alive() || enemy.hit_cooldown > 0.0 || enemy.held || enemy.thrown {
         return;
     }
     let reach = enemy.radius + sim.blob.params.point_radius + p.hit_reach;
@@ -115,7 +133,15 @@ fn player_hits(sim: &mut Sim, i: usize, modes: TarModes, events: &mut Vec<Event>
     let kind = if sim.controller.is_slamming() && from_above {
         HitKind::Slam
     } else if sim.controller.is_lunging() {
-        HitKind::Lunge
+        // What the player holds when the lunge arrives decides what it does.
+        if modes.sticky && sim.held.is_none() && enemy.grabbable(direction) {
+            grab(sim, i, events);
+            return;
+        } else if sim.controller.jump_is_held() && !modes.sticky {
+            HitKind::Pogo
+        } else {
+            HitKind::Lunge
+        }
     } else if modes.bouncy && from_above && closing > 2.0 {
         HitKind::Pogo
     } else if closing > p.impact_speed {
@@ -151,7 +177,7 @@ fn player_hits(sim: &mut Sim, i: usize, modes: TarModes, events: &mut Vec<Event>
             } else {
                 p.pogo_speed
             };
-            Vec2::new(v.x * 0.5, up)
+            Vec2::new(v.x * 0.5 - direction.x * 4.0, up)
         }
         HitKind::Lunge => -direction * 4.0 + Vec2::Y * 6.0,
         _ => v - direction * closing * 1.3,
@@ -165,6 +191,7 @@ fn shockwave(sim: &mut Sim, at: Vec2, events: &mut Vec<Event>) {
         let enemy = &sim.enemies[i];
         let offset = enemy.position - at;
         if !enemy.alive()
+            || enemy.held
             || enemy.hit_cooldown > 0.0
             || offset.length() > sim.combat.shockwave_radius + enemy.radius
         {
@@ -239,7 +266,8 @@ fn noises(sim: &Sim, modes: TarModes, events: &[Event]) -> Vec<(Vec2, f32)> {
                 Event::Lunged { .. } => 4.0,
                 Event::Launched { .. } => 5.0,
                 Event::Bounced { .. } => 7.0,
-                Event::Hit { .. } | Event::Blocked { .. } => 8.0,
+                Event::Hit { .. } | Event::Blocked { .. } | Event::Struck { .. } => 8.0,
+                Event::Thrown { .. } => 5.0,
                 Event::Slammed { .. } => 10.0,
                 _ => return None,
             };
@@ -288,10 +316,28 @@ fn perceive_and_think(sim: &mut Sim) {
 fn enemy_attacks(sim: &mut Sim, events: &mut Vec<Event>) {
     for i in 0..sim.enemies.len() {
         let enemy = &sim.enemies[i];
-        if !enemy.alive() || !enemy.striking() || enemy.struck {
+        if !enemy.alive() || !enemy.striking() {
             continue;
         }
         let center = enemy.position + Vec2::X * enemy.facing * GUARD_SWING_OFFSET;
+        // The swing hits anything in it, friend or not.
+        let facing = enemy.facing;
+        for j in 0..sim.enemies.len() {
+            let other = &sim.enemies[j];
+            if j != i
+                && other.alive()
+                && other.hit_cooldown <= 0.0
+                && other.position.distance(center) < GUARD_SWING_RADIUS + other.radius
+            {
+                let direction = Vec2::new(facing, 0.0);
+                let knockback = Vec2::new(facing * 6.0, 4.0);
+                let damage = sim.combat.swing_damage;
+                strike(sim, j, direction, damage, knockback, events);
+            }
+        }
+        if sim.enemies[i].struck {
+            continue;
+        }
         let reach = GUARD_SWING_RADIUS + sim.blob.params.point_radius;
         let hit = sim
             .blob
@@ -314,7 +360,7 @@ fn enemy_attacks(sim: &mut Sim, events: &mut Vec<Event>) {
 /// Enemies are solid to the blob: push any point inside one back out.
 fn push_blob_out(sim: &mut Sim, i: usize) {
     let enemy = &sim.enemies[i];
-    if !enemy.alive() {
+    if !enemy.alive() || enemy.held {
         return;
     }
     let reach = enemy.radius + sim.blob.params.point_radius;
@@ -400,6 +446,8 @@ pub struct Projectile {
     pub life: f32,
     /// Already passed through a shrunk player, so it doesn't count twice.
     pub dodged: bool,
+    /// The enemy that fired it, which it can't hit.
+    pub owner: usize,
 }
 
 pub const SPIT_SPEED: f32 = 11.0;
@@ -407,13 +455,14 @@ pub const SPIT_RADIUS: f32 = 0.15;
 const SPIT_LIFE: f32 = 3.0;
 
 fn spawn_projectiles(sim: &mut Sim) {
-    for enemy in &mut sim.enemies {
+    for (owner, enemy) in sim.enemies.iter_mut().enumerate() {
         if let Some(direction) = enemy.fire.take() {
             sim.projectiles.push(Projectile {
                 position: enemy.position + direction * (enemy.radius + SPIT_RADIUS + 0.05),
                 velocity: direction * SPIT_SPEED,
                 life: SPIT_LIFE,
                 dodged: false,
+                owner,
             });
         }
     }
@@ -436,6 +485,26 @@ fn move_projectiles(sim: &mut Sim, events: &mut Vec<Event>) {
             sim.projectiles.remove(i);
             continue;
         }
+        // Spit hits other enemies too, including one the player is holding.
+        let owner = sim.projectiles[i].owner;
+        let victim = (0..sim.enemies.len()).find(|&j| {
+            let e = &sim.enemies[j];
+            j != owner && e.alive() && e.position.distance(at) < e.radius + SPIT_RADIUS
+        });
+        if let Some(j) = victim {
+            let direction = sim.projectiles[i].velocity.normalize_or(Vec2::X);
+            sim.projectiles.remove(i);
+            let damage = sim.combat.spit_damage;
+            strike(
+                sim,
+                j,
+                direction,
+                damage,
+                direction * 4.0 + Vec2::Y * 2.0,
+                events,
+            );
+            continue;
+        }
         let reach = SPIT_RADIUS + sim.blob.params.point_radius;
         let touching = sim.blob.center().distance(at) < sim.blob.params.radius
             || sim.blob.positions.iter().any(|q| q.distance(at) < reach);
@@ -451,5 +520,145 @@ fn move_projectiles(sim: &mut Sim, events: &mut Vec<Event>) {
             continue;
         }
         i += 1;
+    }
+}
+
+/// Latches onto enemy `i`: the lunge stops and the enemy is held.
+fn grab(sim: &mut Sim, i: usize, events: &mut Vec<Event>) {
+    sim.controller.cancel_moves(&mut sim.blob);
+    let v = sim.blob.velocity();
+    sim.blob.set_velocity(v * 0.2);
+    sim.controller.refresh_lunge();
+    let enemy = &mut sim.enemies[i];
+    enemy.held = true;
+    enemy.thrown = false;
+    enemy.velocity = Vec2::ZERO;
+    sim.held = Some(i);
+    events.push(Event::Grabbed { enemy: i });
+    sim.freeze(sim.combat.hitstop);
+}
+
+/// Keeps the held enemy in front of the blob, and drops it when Grip lets go.
+fn carry(sim: &mut Sim, intent: Intent, events: &mut Vec<Event>) {
+    let Some(i) = sim.held else {
+        return;
+    };
+    let enemy = &mut sim.enemies[i];
+    if !enemy.alive() {
+        enemy.held = false;
+        sim.held = None;
+        return;
+    }
+    if !intent.modes.sticky {
+        enemy.held = false;
+        enemy.velocity = sim.blob.velocity();
+        sim.held = None;
+        events.push(Event::Dropped { enemy: i });
+        return;
+    }
+    let reach = sim.blob.params.radius * sim.blob.scale + enemy.radius;
+    enemy.position = sim.blob.center() + Vec2::new(sim.controller.facing() * reach * 0.8, 0.25);
+    enemy.velocity = sim.blob.velocity();
+}
+
+/// Throws the held enemy along the aim (or forward and a little up), harder
+/// with more shrink charge.
+pub(crate) fn throw(sim: &mut Sim, aim: Vec2, events: &mut Vec<Event>) {
+    let Some(i) = sim.held.take() else {
+        return;
+    };
+    let facing = sim.controller.facing();
+    let direction = aim
+        .try_normalize()
+        .filter(|_| aim.length() > 0.3)
+        .unwrap_or(Vec2::new(facing, 0.4).normalize());
+    let power = sim.controller.charge();
+    sim.controller.spend_charge();
+    let max = sim.controller.params.coil_max_power;
+    let speed = sim.combat.throw_speed * (1.0 + (max - 1.0) * power);
+    let reach = sim.blob.params.radius * sim.blob.scale;
+    let enemy = &mut sim.enemies[i];
+    enemy.held = false;
+    enemy.thrown = true;
+    enemy.hit_cooldown = 0.3;
+    enemy.position = sim.blob.center() + direction * (reach + enemy.radius + 0.05);
+    enemy.velocity = direction * speed;
+    let v = sim.blob.velocity();
+    sim.blob.set_velocity(v - direction * 2.0);
+    events.push(Event::Thrown { enemy: i, speed });
+}
+
+/// A thrown enemy hurts the first other enemy it hits, and itself when it
+/// hits a wall hard. It stops being a projectile once it slows down.
+fn thrown_bodies(sim: &mut Sim, events: &mut Vec<Event>) {
+    for i in 0..sim.enemies.len() {
+        let body = &sim.enemies[i];
+        if !body.alive() || !body.thrown {
+            continue;
+        }
+        let speed = body.velocity.length();
+        if body.impact > sim.combat.splat_speed {
+            let damage = body.impact * sim.combat.thrown_damage_per_speed;
+            let direction = -body.velocity.normalize_or(Vec2::Y);
+            sim.enemies[i].thrown = false;
+            strike(sim, i, direction, damage, Vec2::Y * 2.0, events);
+            continue;
+        }
+        if speed < 4.0 && body.on_ground {
+            sim.enemies[i].thrown = false;
+            continue;
+        }
+        let (at, radius, velocity) = (body.position, body.radius, body.velocity);
+        let victim = (0..sim.enemies.len()).find(|&j| {
+            let e = &sim.enemies[j];
+            j != i && e.alive() && !e.held && e.position.distance(at) < e.radius + radius
+        });
+        let Some(j) = victim else {
+            continue;
+        };
+        let direction = (sim.enemies[j].position - at).normalize_or(velocity.normalize_or(Vec2::X));
+        let damage = sim.combat.thrown_damage + speed * sim.combat.thrown_damage_per_speed;
+        let knockback = direction * speed * 0.5 + Vec2::Y * 3.0;
+        strike(sim, j, direction, damage, knockback, events);
+        // The thrown body bounces off and takes half.
+        let rebound = -direction * speed * 0.3 + Vec2::Y * 2.0;
+        let body = &mut sim.enemies[i];
+        body.thrown = false;
+        body.velocity = rebound;
+        strike(sim, i, -direction, damage * 0.5, rebound, events);
+    }
+}
+
+/// Damage to enemy `j` from something other than the player.
+fn strike(
+    sim: &mut Sim,
+    j: usize,
+    direction: Vec2,
+    damage: f32,
+    knockback: Vec2,
+    events: &mut Vec<Event>,
+) {
+    let enemy = &mut sim.enemies[j];
+    enemy.hit_cooldown = sim.combat.hit_cooldown;
+    let at = enemy.position;
+    let knockback = if enemy.held { Vec2::ZERO } else { knockback };
+    match enemy.take_hit(HitKind::Impact, direction, damage, knockback) {
+        HitOutcome::Blocked => events.push(Event::Blocked { enemy: j, at }),
+        HitOutcome::Hurt { damage, killed } => {
+            events.push(Event::Struck {
+                enemy: j,
+                damage,
+                at,
+            });
+            if killed {
+                events.push(Event::Killed { enemy: j, at });
+                sim.pickups.push(at);
+                if sim.held == Some(j) {
+                    sim.held = None;
+                    sim.enemies[j].held = false;
+                }
+            }
+            sim.freeze(sim.combat.hitstop * 0.6);
+        }
     }
 }

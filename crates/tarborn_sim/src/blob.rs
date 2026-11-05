@@ -246,7 +246,7 @@ impl Blob {
             let radial = self.positions[i] - center;
             // Clockwise tangent: spinning clockwise rolls the blob to the right.
             let tangent = Vec2::new(radial.y, -radial.x).normalize_or_zero();
-            accel += tangent * roll * p.roll_accel;
+            accel += tangent * roll * p.roll_accel / self.scale;
             if airborne {
                 accel.x += roll * p.air_accel;
             }

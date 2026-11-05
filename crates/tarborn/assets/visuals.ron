@@ -2,38 +2,43 @@
 // Edit while the game runs (cargo run): the file is re-read about twice a second.
 // Colors are sRGB, 0..1. Distances are world pixels (48 px = 1 m).
 (
-    // Pale, worn industrial ruin behind everything.
-    background: (0.83, 0.79, 0.72),
-
     level: (
-        solid: (0.29, 0.25, 0.22),
-        // Lighter lip along every floor-like edge.
-        edge: (0.49, 0.43, 0.37),
-        edge_width: 2.0,
-        // Edges whose outward normal points up at least this much get a lip.
-        edge_min_up: 0.7,
         hazard: (0.82, 0.27, 0.18),
         spike_width: 14.4,
         spike_height: 9.6,
-        // Generated girders inside solids.
-        strut: (0.43, 0.38, 0.33),
-        strut_width: 3.0,
-        rivet: (0.54, 0.47, 0.40),
-        rivet_size: 3.0,
-        rivet_chance: 0.3,
-        cell_size: 16.0,
-        // A cell takes part only if it sits this far inside a solid.
-        cell_margin: 2.0,
+    ),
+
+    // Generated level dressing. The pieces and colors are per stage, in
+    // assets/dressing/*.ron (B cycles sets); these numbers say how the level
+    // shape is read.
+    dressing: (
+        default_set: "industrial",
         seed: 7,
-        weights: (empty: 3.0, end: 0.3, straight: 4.0, corner: 1.2, junction: 0.6),
-        // Tar drips hanging from ceiling-like edges.
-        drips_per_100px: 0.6,
-        drip_length: (8.0, 26.0),
-        drip_width: 4.0,
-        drip_bulb: 4.5,
-        // Only edges with a solid this far below them drip (so nothing drips
-        // outside the room).
-        drip_max_drop: 960.0,
+        shape: (
+            // Raster cell size.
+            cell: 2.0,
+            // Smoothing passes over the traced outline (takes out raster stairs).
+            smoothing: 3,
+            // Outward normal y at or above this is a floor; below, a slope.
+            floor_min_up: 0.97,
+            // Normal |y| below this is a wall.
+            wall_max_y: 0.7,
+            // Turning (radians per px, averaged over arc_window px) that makes an arc.
+            arc_curvature: 0.004,
+            arc_window: 60.0,
+            // Turning over corner_window px that makes a corner (radians).
+            corner_turn: 0.6,
+            corner_window: 12.0,
+            // Strips stop this far short of a corner.
+            corner_gap: 8.0,
+            // Probe circle radius telling outer corners from inner ones.
+            corner_probe: 12.0,
+            // Shorter runs are left bare.
+            min_run: 10.0,
+        ),
+        depth_max: 128.0,
+        // Past the level's bounds everything is solid, this far out.
+        surround: 4000.0,
     ),
 
     tar: (

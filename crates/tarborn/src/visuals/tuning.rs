@@ -6,7 +6,7 @@ use std::time::SystemTime;
 use bevy::prelude::*;
 use serde::Deserialize;
 
-use super::wfc::Weights;
+use super::dressing::shape::ShapeParams;
 
 /// The tuning file next to this crate's Cargo.toml. Its contents are also
 /// compiled in, so the game still has a look when the file isn't there.
@@ -28,8 +28,8 @@ pub fn linear(c: Rgb) -> Vec4 {
 
 #[derive(Resource, Deserialize, Clone, Debug, PartialEq)]
 pub struct VisualTuning {
-    pub background: Rgb,
     pub level: LevelLook,
+    pub dressing: DressingLook,
     pub tar: TarLook,
     pub enemy: EnemyLook,
     pub post: PostLook,
@@ -37,27 +37,23 @@ pub struct VisualTuning {
 
 #[derive(Deserialize, Clone, Debug, PartialEq)]
 pub struct LevelLook {
-    pub solid: Rgb,
-    pub edge: Rgb,
-    pub edge_width: f32,
-    pub edge_min_up: f32,
     pub hazard: Rgb,
     pub spike_width: f32,
     pub spike_height: f32,
-    pub strut: Rgb,
-    pub strut_width: f32,
-    pub rivet: Rgb,
-    pub rivet_size: f32,
-    pub rivet_chance: f32,
-    pub cell_size: f32,
-    pub cell_margin: f32,
+}
+
+/// How the level dressing reads the shape; the pieces come from the sets in
+/// `assets/dressing/`.
+#[derive(Deserialize, Clone, Debug, PartialEq)]
+pub struct DressingLook {
+    /// The set shown first (B cycles sets).
+    pub default_set: String,
     pub seed: u64,
-    pub weights: Weights,
-    pub drips_per_100px: f32,
-    pub drip_length: (f32, f32),
-    pub drip_width: f32,
-    pub drip_max_drop: f32,
-    pub drip_bulb: f32,
+    pub shape: ShapeParams,
+    /// Depths up to this many px are stored for the body shader.
+    pub depth_max: f32,
+    /// How far past the level's bounds the outside is filled in.
+    pub surround: f32,
 }
 
 #[derive(Deserialize, Clone, Debug, PartialEq)]

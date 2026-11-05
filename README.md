@@ -34,17 +34,24 @@ sudo apt install libasound2-dev libudev-dev libwayland-dev libxkbcommon-dev pkg-
 
 ## Controls
 
-| Action  | Keyboard            | Gamepad              |
-|---------|---------------------|----------------------|
-| Roll    | A / D, arrow keys   | Left stick, D-pad    |
-| Jump    | Space, W, Up        | South (A / Cross)    |
-| Sticky  | J, Left Shift       | Right trigger        |
-| Slick   | K                   | Left trigger         |
-| Heavy   | L, S, Down          | West (X / Square)    |
-| Restart | R                   |                      |
+| Action      | Keyboard              | Gamepad              |
+|-------------|-----------------------|----------------------|
+| Roll / aim  | A / D / W / S, arrows | Left stick, D-pad    |
+| Jump        | Space                 | South (A / Cross)    |
+| Lunge       | J or X                | West (X / Square)    |
+| Sticky      | K, Left Shift (hold)  | Right trigger        |
+| Bouncy      | L (hold)              | Left trigger         |
+| Restart     | R                     |                      |
 
-Sticky lets you cling to walls and ceilings and roll up them. Slick removes
-friction. Heavy falls harder and holds its shape. They combine.
+- **Lunge** is a short, gravity-free burst in the aimed direction (or the way
+  you face). You are invulnerable during it. You get one in the air, refilled
+  by touching any surface. Jumping cancels it and keeps its speed.
+- **Slam** is a lunge aimed down while in the air: straight down, hard.
+- **Sticky** clings to walls and ceilings; roll to crawl along them.
+- **Bouncy** is springy and nearly frictionless: you rebound off whatever you
+  hit. Slam with bouncy held to launch yourself high.
+
+The blob flashes white while invulnerable.
 
 ## How responsiveness is handled
 

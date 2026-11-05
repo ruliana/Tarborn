@@ -4,7 +4,9 @@
 use bevy::app::RunFixedMainLoopSystems;
 use bevy::prelude::*;
 use tarborn_sim::combat::SPIT_RADIUS;
-use tarborn_sim::enemy::{GUARD_SWING_OFFSET, GUARD_SWING_RADIUS, SPIT_AIM};
+use tarborn_sim::enemy::{
+    BRUTE_SLAM_RADIUS, BRUTE_WINDUP, GUARD_SWING_OFFSET, GUARD_SWING_RADIUS, SPIT_AIM,
+};
 use tarborn_sim::{
     AttackPhase, DT, Enemy, EnemyKind, Intent, Sim, State, TICKS_PER_SECOND, TarModes,
 };
@@ -372,6 +374,8 @@ fn draw_enemy(gizmos: &mut Gizmos, enemy: &Enemy, at: Vec2, now: f32) {
         EnemyKind::Grub => Color::srgb(0.75, 0.55, 0.85),
         EnemyKind::Guard => Color::srgb(0.45, 0.6, 0.95),
         EnemyKind::Spitter => Color::srgb(0.95, 0.6, 0.35),
+        EnemyKind::Skitter => Color::srgb(0.95, 0.9, 0.4),
+        EnemyKind::Brute => Color::srgb(0.75, 0.35, 0.3),
     };
     let flash = ((now * 20.0) as u32).is_multiple_of(2);
     let color = match enemy.state {
@@ -412,6 +416,45 @@ fn draw_enemy(gizmos: &mut Gizmos, enemy: &Enemy, at: Vec2, now: f32) {
         (EnemyKind::Spitter, _) => {
             let corners = [Vec2::X, Vec2::Y, Vec2::NEG_X, Vec2::NEG_Y, Vec2::X];
             gizmos.linestrip_2d(corners.iter().map(|c| at + *c * r * 1.2), color);
+        }
+        (EnemyKind::Skitter, _) => {
+            // A triangle pointing the way it faces.
+            let tip = at + facing * r * 1.3;
+            let back_up = at - facing * r + Vec2::Y * r;
+            let back_down = at - facing * r - Vec2::Y * r;
+            gizmos.linestrip_2d([tip, back_up, back_down, tip], color);
+        }
+        (EnemyKind::Brute, _) => {
+            // Raised up during the wind-up, so the slam is easy to read.
+            let lift = if enemy.state == State::Attacking(AttackPhase::Windup) {
+                (enemy.state_time / BRUTE_WINDUP).min(1.0) * r * 0.4
+            } else {
+                0.0
+            };
+            gizmos.rect_2d(
+                Isometry2d::from_translation(at + Vec2::Y * lift),
+                Vec2::splat(r * 2.0),
+                color,
+            );
+        }
+    }
+    // The reach of a brute's slam: drawn faintly as it winds up, solid as it lands.
+    if enemy.kind == EnemyKind::Brute {
+        let radius = BRUTE_SLAM_RADIUS * PIXELS_PER_METER;
+        let ground = at - Vec2::Y * r;
+        match enemy.state {
+            State::Attacking(AttackPhase::Windup) => {
+                let k = (enemy.state_time / BRUTE_WINDUP).min(1.0);
+                gizmos.line_2d(
+                    ground - Vec2::X * radius * k,
+                    ground + Vec2::X * radius * k,
+                    Color::srgba(1.0, 0.3, 0.2, 0.6),
+                );
+            }
+            State::Attacking(AttackPhase::Strike) => {
+                gizmos.circle_2d(at, radius, Color::srgb(1.0, 0.3, 0.2));
+            }
+            _ => {}
         }
     }
     // A spitter's aim line while it winds up, so you can see the shot coming.
@@ -464,8 +507,12 @@ fn draw_enemy(gizmos: &mut Gizmos, enemy: &Enemy, at: Vec2, now: f32) {
             gizmos.circle_2d(head + Vec2::Y * 6.0, 5.0, Color::srgb(1.0, 0.9, 0.3));
             gizmos.circle_2d(head - Vec2::Y * 4.0, 1.5, Color::srgb(1.0, 0.9, 0.3));
         }
-        State::Searching => {
+        // Skitters are always searching, so it isn't marked on them.
+        State::Searching if enemy.kind != EnemyKind::Skitter => {
             gizmos.circle_2d(head + Vec2::Y * 4.0, 6.0, Color::srgb(1.0, 0.6, 0.2));
+        }
+        State::Dodging => {
+            gizmos.line_2d(head - Vec2::X * 8.0, head + Vec2::X * 8.0, Color::WHITE);
         }
         State::Dizzy => {
             for k in 0..3 {

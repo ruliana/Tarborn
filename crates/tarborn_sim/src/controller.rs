@@ -198,6 +198,21 @@ pub enum Event {
     Dodged {
         at: Vec2,
     },
+    /// A skitter hopped out of the way of a lunge.
+    Evaded {
+        enemy: usize,
+        at: Vec2,
+    },
+    /// A brute's ground slam went off.
+    Quake {
+        enemy: usize,
+        at: Vec2,
+    },
+    /// A brute ate a grub.
+    Eaten {
+        enemy: usize,
+        prey: usize,
+    },
     /// A guard's shield stopped the hit.
     Blocked {
         enemy: usize,

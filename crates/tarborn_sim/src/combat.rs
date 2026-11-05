@@ -7,7 +7,10 @@
 use glam::Vec2;
 
 use crate::controller::{Event, HitKind, Intent};
-use crate::enemy::{GUARD_SWING_OFFSET, GUARD_SWING_RADIUS, HitOutcome, Senses, line_of_sight};
+use crate::enemy::{
+    BRUTE_SLAM_RADIUS, EnemyKind, FEAR_DISTANCE, GUARD_SWING_OFFSET, GUARD_SWING_RADIUS,
+    HitOutcome, Senses, State, line_of_sight,
+};
 use crate::{DT, Sim, TarModes};
 
 #[derive(Clone, Debug, PartialEq)]
@@ -43,6 +46,10 @@ pub struct CombatParams {
     pub splat_speed: f32,
     pub spit_damage: f32,
     pub swing_damage: f32,
+    /// A skitter's pounce, to anything it lands on other than the player.
+    pub pounce_damage: f32,
+    /// A brute's slam, to other enemies.
+    pub quake_damage: f32,
 }
 
 impl Default for CombatParams {
@@ -72,6 +79,8 @@ impl Default for CombatParams {
             splat_speed: 8.0,
             spit_damage: 15.0,
             swing_damage: 25.0,
+            pounce_damage: 15.0,
+            quake_damage: 35.0,
         }
     }
 }
@@ -97,6 +106,7 @@ pub(crate) fn resolve(sim: &mut Sim, intent: Intent, events: &mut Vec<Event>) {
     spawn_projectiles(sim);
     move_projectiles(sim, events);
     thrown_bodies(sim, events);
+    eating(sim, events);
     for i in 0..sim.enemies.len() {
         player_hits(sim, i, modes, events);
     }
@@ -127,11 +137,19 @@ fn player_hits(sim: &mut Sim, i: usize, modes: TarModes, events: &mut Vec<Event>
     }
     let center = sim.blob.center();
     let direction = (enemy.position - center).normalize_or(Vec2::X);
-    let closing = (sim.blob.velocity() - enemy.velocity).dot(direction);
+    // Only the player's own speed counts: an enemy running into a still
+    // blob doesn't hurt itself.
+    let closing = sim.blob.velocity().dot(direction) - enemy.velocity.dot(direction).max(0.0);
     let from_above = direction.y < -0.5;
 
     let kind = if sim.controller.is_slamming() && from_above {
         HitKind::Slam
+    } else if sim.controller.is_lunging() && enemy.can_evade() {
+        // A skitter sees lunges coming and hops aside; the lunge carries on.
+        let at = enemy.position;
+        sim.enemies[i].evade(center);
+        events.push(Event::Evaded { enemy: i, at });
+        return;
     } else if sim.controller.is_lunging() {
         // What the player holds when the lunge arrives decides what it does.
         if modes.sticky && sim.held.is_none() && enemy.grabbable(direction) {
@@ -283,10 +301,38 @@ fn noises(sim: &Sim, modes: TarModes, events: &[Event]) -> Vec<(Vec2, f32)> {
 
 fn perceive_and_think(sim: &mut Sim) {
     let player = sim.blob.center();
-    for enemy in &mut sim.enemies {
+    // Where everyone is, before anyone moves.
+    let bodies: Vec<(EnemyKind, Vec2, bool)> = sim
+        .enemies
+        .iter()
+        .map(|e| (e.kind, e.position, e.alive() && !e.held))
+        .collect();
+    for (i, enemy) in sim.enemies.iter_mut().enumerate() {
         if !enemy.alive() {
             continue;
         }
+        let closest = |wanted: &dyn Fn(EnemyKind, Vec2) -> bool| {
+            bodies
+                .iter()
+                .enumerate()
+                .filter(|(j, (kind, at, ok))| *j != i && *ok && wanted(*kind, *at))
+                .map(|(_, (_, at, _))| *at)
+                .min_by(|a, b| {
+                    a.distance(enemy.position)
+                        .total_cmp(&b.distance(enemy.position))
+                })
+        };
+        let prey = closest(&|kind, at| {
+            let offset = at - enemy.position;
+            enemy.kind.hunts(kind)
+                && offset.x * enemy.facing > -0.3
+                && offset.length() < enemy.kind.sight_range()
+                && offset.y.abs() < 2.5
+                && line_of_sight(&sim.level, enemy.position, at)
+        });
+        let threat = closest(&|kind, at| {
+            enemy.kind.fears(kind) && at.distance(enemy.position) < FEAR_DISTANCE
+        });
         let offset = player - enemy.position;
         let in_front = offset.x * enemy.facing > -0.3;
         let sees_player = !sim.dead
@@ -307,17 +353,30 @@ fn perceive_and_think(sim: &mut Sim) {
             player,
             sees_player,
             heard,
+            prey,
+            threat,
         };
         enemy.think(senses, &sim.level, DT);
     }
 }
 
-/// Swings that connect with the player.
+/// Attacks that are out this tick: swings, pounces and quakes.
 fn enemy_attacks(sim: &mut Sim, events: &mut Vec<Event>) {
     for i in 0..sim.enemies.len() {
         let enemy = &sim.enemies[i];
         if !enemy.alive() || !enemy.striking() {
             continue;
+        }
+        match enemy.kind {
+            EnemyKind::Skitter => {
+                pounce(sim, i, events);
+                continue;
+            }
+            EnemyKind::Brute => {
+                quake(sim, i, events);
+                continue;
+            }
+            _ => {}
         }
         let center = enemy.position + Vec2::X * enemy.facing * GUARD_SWING_OFFSET;
         // The swing hits anything in it, friend or not.
@@ -357,10 +416,112 @@ fn enemy_attacks(sim: &mut Sim, events: &mut Vec<Event>) {
     }
 }
 
+/// A pouncing skitter bites whatever it lands on. Shrinking doesn't help:
+/// it bites low.
+fn pounce(sim: &mut Sim, i: usize, events: &mut Vec<Event>) {
+    let (at, radius, facing) = {
+        let e = &sim.enemies[i];
+        (e.position, e.radius, e.facing)
+    };
+    for j in 0..sim.enemies.len() {
+        let other = &sim.enemies[j];
+        if j != i
+            && other.alive()
+            && other.hit_cooldown <= 0.0
+            && other.position.distance(at) < radius + other.radius + 0.1
+        {
+            let direction = (other.position - at).normalize_or(Vec2::X * facing);
+            let damage = sim.combat.pounce_damage;
+            strike(
+                sim,
+                j,
+                direction,
+                damage,
+                direction * 4.0 + Vec2::Y * 2.0,
+                events,
+            );
+        }
+    }
+    if sim.enemies[i].struck {
+        return;
+    }
+    let reach = radius + sim.blob.params.point_radius + sim.combat.hit_reach;
+    let hit = sim.blob.positions.iter().any(|q| q.distance(at) < reach);
+    if hit && !sim.player_invulnerable() {
+        sim.enemies[i].struck = true;
+        hurt_player(sim, facing, events);
+    }
+}
+
+/// A brute's slam hits everything on the ground around it, once. Shrinking
+/// doesn't dodge it; being in the air does.
+fn quake(sim: &mut Sim, i: usize, events: &mut Vec<Event>) {
+    if sim.enemies[i].struck {
+        return;
+    }
+    sim.enemies[i].struck = true;
+    let at = sim.enemies[i].position;
+    events.push(Event::Quake { enemy: i, at });
+    for j in 0..sim.enemies.len() {
+        let other = &sim.enemies[j];
+        if j != i
+            && other.alive()
+            && other.on_ground
+            && other.position.distance(at) < BRUTE_SLAM_RADIUS + other.radius
+        {
+            let side = if other.position.x >= at.x { 1.0 } else { -1.0 };
+            let damage = sim.combat.quake_damage;
+            let knockback = Vec2::new(side * 4.0, 7.0);
+            strike_as(
+                sim,
+                j,
+                HitKind::Shockwave,
+                Vec2::new(side, -0.5),
+                damage,
+                knockback,
+                events,
+            );
+        }
+    }
+    let center = sim.blob.center();
+    let grounded = sim.blob.touching_count() > 0;
+    if grounded && center.distance(at) < BRUTE_SLAM_RADIUS + sim.blob.params.radius {
+        let away = if center.x >= at.x { 1.0 } else { -1.0 };
+        hurt_player(sim, away, events);
+    }
+}
+
+/// A brute that touches a grub eats it.
+fn eating(sim: &mut Sim, events: &mut Vec<Event>) {
+    for i in 0..sim.enemies.len() {
+        let brute = &sim.enemies[i];
+        let busy = matches!(
+            brute.state,
+            State::Attacking(_) | State::Dizzy | State::Prone
+        );
+        if brute.kind != EnemyKind::Brute || !brute.alive() || brute.held || busy {
+            continue;
+        }
+        let (at, reach) = (brute.position, brute.radius + 0.2);
+        let meal = (0..sim.enemies.len()).find(|&j| {
+            let e = &sim.enemies[j];
+            e.kind == EnemyKind::Grub
+                && e.alive()
+                && !e.held
+                && e.position.distance(at) < reach + e.radius
+        });
+        if let Some(j) = meal {
+            sim.enemies[j].die();
+            sim.enemies[i].eat();
+            events.push(Event::Eaten { enemy: i, prey: j });
+        }
+    }
+}
+
 /// Enemies are solid to the blob: push any point inside one back out.
 fn push_blob_out(sim: &mut Sim, i: usize) {
     let enemy = &sim.enemies[i];
-    if !enemy.alive() || enemy.held {
+    if !enemy.alive() || enemy.held || enemy.state == State::Dodging {
         return;
     }
     let reach = enemy.radius + sim.blob.params.point_radius;
@@ -638,11 +799,31 @@ fn strike(
     knockback: Vec2,
     events: &mut Vec<Event>,
 ) {
+    strike_as(
+        sim,
+        j,
+        HitKind::Impact,
+        direction,
+        damage,
+        knockback,
+        events,
+    );
+}
+
+fn strike_as(
+    sim: &mut Sim,
+    j: usize,
+    kind: HitKind,
+    direction: Vec2,
+    damage: f32,
+    knockback: Vec2,
+    events: &mut Vec<Event>,
+) {
     let enemy = &mut sim.enemies[j];
     enemy.hit_cooldown = sim.combat.hit_cooldown;
     let at = enemy.position;
     let knockback = if enemy.held { Vec2::ZERO } else { knockback };
-    match enemy.take_hit(HitKind::Impact, direction, damage, knockback) {
+    match enemy.take_hit(kind, direction, damage, knockback) {
         HitOutcome::Blocked => events.push(Event::Blocked { enemy: j, at }),
         HitOutcome::Hurt { damage, killed } => {
             events.push(Event::Struck {

@@ -1,0 +1,13 @@
+[package]
+name = "tarborn_pcg"
+description = "Engine-free level generation for Tarborn: chunk data, bots, metrics, generators and assembly."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+glam.workspace = true
+ron.workspace = true
+serde.workspace = true
+tarborn_sim = { workspace = true, features = ["serde"] }

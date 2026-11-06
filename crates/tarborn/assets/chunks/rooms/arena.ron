@@ -1,0 +1,62 @@
+(
+    id: "arena",
+    meta: (
+        seed: 0,
+        derivation: "",
+        generator: "hand-built",
+        set: None,
+    ),
+    bounds: ((-21.0, -2.0), (21.0, 17.0)),
+    solids: [
+        Rect((-20.0, -2.0), (20.0, 0.0)),
+        Rect((-21.0, -2.0), (-20.0, 17.0)),
+        Rect((20.0, -2.0), (21.0, 17.0)),
+        Rect((-21.0, 16.0), (21.0, 17.0)),
+        Rect((-14.0, 5.0), (-8.0, 5.5)),
+        Rect((8.0, 5.0), (14.0, 5.5)),
+        Rect((-3.0, 8.0), (3.0, 8.5)),
+        Rect((-20.0, 0.0), (-18.0, 2.5)),
+        Rect((18.0, 0.0), (20.0, 2.5)),
+    ],
+    hazards: [
+        Rect((-1.5, 0.0), (1.5, 0.3)),
+    ],
+    pickups: [],
+    enemies: [],
+    sockets: [],
+    reward_slots: [],
+    routes: [],
+    spawn: Some((0.0, 9.0)),
+    view: Some((21.3, 12.0)),
+    waves: [
+        [
+            (kind: Guard, at: (-10.0, 2.0), facing: 1.0, state: Unaware),
+            (kind: Guard, at: (10.0, 2.0), facing: 1.0, state: Unaware),
+        ],
+        [
+            (kind: Spitter, at: (-11.0, 6.5), facing: 1.0, state: Unaware),
+            (kind: Spitter, at: (11.0, 6.5), facing: 1.0, state: Unaware),
+            (kind: Skitter, at: (-6.0, 2.0), facing: 1.0, state: Unaware),
+        ],
+        [
+            (kind: Skitter, at: (-15.0, 2.0), facing: 1.0, state: Unaware),
+            (kind: Skitter, at: (6.0, 2.0), facing: 1.0, state: Unaware),
+            (kind: Skitter, at: (15.0, 2.0), facing: 1.0, state: Unaware),
+            (kind: Guard, at: (-12.0, 2.0), facing: 1.0, state: Unaware),
+            (kind: Guard, at: (12.0, 2.0), facing: 1.0, state: Unaware),
+        ],
+        [
+            (kind: Brute, at: (12.0, 2.5), facing: 1.0, state: Unaware),
+            (kind: Guard, at: (-10.0, 2.0), facing: 1.0, state: Unaware),
+            (kind: Spitter, at: (-11.0, 6.5), facing: 1.0, state: Unaware),
+        ],
+        [
+            (kind: Brute, at: (-12.0, 2.5), facing: 1.0, state: Unaware),
+            (kind: Brute, at: (12.0, 2.5), facing: 1.0, state: Unaware),
+            (kind: Skitter, at: (-6.0, 2.0), facing: 1.0, state: Unaware),
+            (kind: Skitter, at: (6.0, 2.0), facing: 1.0, state: Unaware),
+            (kind: Spitter, at: (11.0, 6.5), facing: 1.0, state: Unaware),
+            (kind: Guard, at: (0.0, 10.0), facing: 1.0, state: Unaware),
+        ],
+    ],
+)

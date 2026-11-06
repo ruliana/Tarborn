@@ -15,7 +15,8 @@ platformer.
 crates/
   tarborn_sim/   Simulation core: blob solver, level collision, controls feel.
                  Pure Rust + glam. All gameplay rules live here.
-  tarborn/       The Bevy game: input, fixed 120 Hz tick, rendering.
+  tarborn_sfx/   Procedural sound synthesis (sfxr-style, layered). No engine.
+  tarborn/       The Bevy game: input, fixed 120 Hz tick, rendering, sound.
 ```
 
 ## Running
@@ -32,6 +33,32 @@ On Linux you need the usual Bevy system packages first:
 sudo apt install libasound2-dev libudev-dev libwayland-dev libxkbcommon-dev pkg-config
 ```
 
+## Camera tuning
+
+The camera (look-ahead, zoom out at speed, zoom in while gripping, screen
+shake on impacts) is tuned in [`camera.ron`](camera.ron) at the repo root.
+The game reloads it while running: edit, save, and the change shows within
+half a second. A typo keeps the last good tuning and logs the error. Set
+`TARBORN_CAMERA=path/to/other.ron` to try an alternate tuning.
+
+## Level dressing
+
+The filled looks dress the level from its shape alone, so any room gets
+dressed without hand placement. The game reads the solids (a raster, a
+distance field, and the outline labelled as floor, slope, wall, ceiling,
+concave or convex arc, and outer or inner corners), then lays pieces on
+it: a body shader that colors solids by depth (trim band, seam, panels),
+strips along each kind of edge, corner pieces, a WFC fill deep inside,
+hanging parts that sway, and a parallax skyline.
+
+Which pieces, and every number about them, is a dressing set: one RON file
+per stage in [`crates/tarborn/assets/dressing/`](crates/tarborn/assets/dressing/)
+(`industrial.ron`, `forest.ron`). B cycles sets, and edits to a set file
+show within half a second. How the shape is read is under `dressing` in
+[`visuals.ron`](crates/tarborn/assets/visuals.ron). The **dressing room**
+(T cycles rooms) has a ramp, rounded corners, an arch and a dome to see
+every piece on.
+
 ## Controls
 
 Two buttons, plus the stick:
@@ -42,7 +69,11 @@ Two buttons, plus the stick:
 | Jump    | Space or J             | South (A / Cross)               |
 | Grip    | K or Left Shift (hold) | Either trigger, or West (X / Square) |
 | Restart | R                      |                                 |
-| Switch room (arena / training) | T |                          |
+| Switch room (arena / training / dressing) | T |               |
+| Mute    | M                      |                                 |
+| Cycle look (lines / Pitch / dithered) | V |                    |
+| Cycle level dressing (industrial / forest) | B |               |
+| Camera effects on/off (A/B) | C |                            |
 
 Two verbs: **Grip shrinks**, **Jump expands**.
 
@@ -95,7 +126,8 @@ by brutes. Kills drop tar that heals. Dying restarts the arena.
   the small grey number is your best chain.
 
 Press T to switch to the **training room**, which has one of each enemy (they
-respawn) and some terrain to try moves on.
+respawn) and some terrain to try moves on. Press it again for the **dressing
+room** (slopes and arcs, a grub and a guard), and again to return to the arena.
 
 ### Combat
 
@@ -180,3 +212,46 @@ its head show it.
 - Grubs run from skitters and brutes.
 - Every attack hurts whatever it hits: spit, swings, pounces, the brute's
   slam and thrown bodies.
+
+## Sound
+
+There are no recorded sounds. Every effect is synthesized at startup from
+numbers in [`crates/tarborn/assets/sfx.ron`](crates/tarborn/assets/sfx.ron),
+and the game reloads that file within half a second of saving it, so sounds
+can be tuned while playing. A mistake in the file is logged and the previous
+sounds stay. Set `TARBORN_SFX=/path/to/file.ron` to play from another file.
+
+The synth follows [sfxr](https://www.drpetter.se/project_sfxr.html) and its
+descendants ([jsfxr](https://sfxr.me/), bfxr, ChipTone): each voice is a
+waveform (sine, triangle, square, saw or noise) with a pitch glide, an
+envelope with punch, vibrato, an arpeggio step, and swept resonant low- and
+high-pass filters. Unlike sfxr, a sound is several **layers** mixed together,
+each with its own delay. That is how impacts are built: a bright transient
+click, a pitched body thump that drops in pitch, and a filtered noise tail.
+
+Each sound also says how it varies per play: random pitch and volume
+spread, how intensity (hit damage, fall speed, charge) maps to volume and
+pitch, a cooldown and a voice limit. The `cues` section tunes when sounds
+fire: landing and sticking speeds, how far enemies can be heard, and so on.
+
+- **Impact**, **stick** and **jump** come first. Landing while shrunk sticks
+  (a wet, resonant squelch) instead of landing (a soft thud); gripping a wall
+  after rolling into it sticks too.
+- **Enemy telegraphs** play over each windup and last as long as it does
+  (a test keeps them in step with the windup times). Hitting an enemy out of
+  its windup cuts its telegraph short.
+- Enemy sounds get quieter with distance from the blob.
+
+To listen outside the game, render every sound to WAV files:
+
+```sh
+cargo run -p tarborn_sfx --example render -- crates/tarborn/assets/sfx.ron sfx_out/
+```
+
+## Look
+
+The default look, Pitch, draws filled shapes: a glossy black tar blob on a
+pale industrial level, with girders inside the walls generated by wave
+function collapse. V cycles through the original line drawing, Pitch, and
+Pitch dithered down to four colors. Every visual number lives in
+`crates/tarborn/assets/visuals.ron`, which the running game re-reads when it changes.

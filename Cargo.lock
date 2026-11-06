@@ -4984,7 +4984,18 @@ name = "tarborn"
 version = "0.1.0"
 dependencies = [
  "bevy",
+ "ron",
+ "serde",
+ "tarborn_sfx",
  "tarborn_sim",
+]
+
+[[package]]
+name = "tarborn_sfx"
+version = "0.1.0"
+dependencies = [
+ "ron",
+ "serde",
 ]
 
 [[package]]

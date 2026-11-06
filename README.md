@@ -156,6 +156,26 @@ closest to the goal plus a few at random. It keeps up to N solutions with
 different beat sequences, and checks each one against K enemy variations
 (enemies nudged sideways, random facing). Its knobs, macro list included,
 are in [`assets/pcg/planner.ron`](crates/tarborn/assets/pcg/planner.ron).
+A goal is a box the blob has to come to rest in, touching a surface.
+
+**Route metrics** (`tarborn_pcg::metrics`) come from the bots' solutions:
+
+- **length**: seconds the easiest solution takes;
+- **complexity**: beats left after dropping every input the route works without;
+- **difficulty**: each required input is moved earlier and later until the
+  route fails; narrow windows are strict (0 relaxed, 1 frame-perfect),
+  scored on the easiest solution;
+- **diversity**: entropy of the beat kinds used;
+- **novelty**: beat n-gram distance to the nearest other routes.
+
+```sh
+cargo run --release -p tarborn_pcg --bin report            # training room and arena
+cargo run --release -p tarborn_pcg --bin report -- arena   # one room
+```
+
+The report measures the goal points listed in
+[`assets/pcg/metrics.ron`](crates/tarborn/assets/pcg/metrics.ron), which also
+holds every weight and threshold.
 
 ### Combat
 

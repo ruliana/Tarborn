@@ -8,6 +8,7 @@
 
 pub mod beats;
 pub mod chunk;
+pub mod metrics;
 pub mod planner;
 pub mod tape;
 
@@ -17,7 +18,7 @@ pub use chunk::{
 };
 
 pub use beats::{Beat, BeatDetector, BeatKind, BeatParams};
-pub use planner::{Plan, Planner, PlannerParams, Solution, vary_enemies};
+pub use planner::{Goal, Plan, Planner, PlannerParams, Solution, vary_enemies};
 pub use tape::{Buttons, Change, Run, Tape, play, play_until};
 
 use std::path::PathBuf;

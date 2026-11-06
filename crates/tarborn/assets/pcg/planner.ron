@@ -12,8 +12,15 @@
     iterations: 400,
     // The longest plan, in ticks.
     tick_budget: 1800,
-    // Close enough to the goal, measured from the blob's centre.
-    goal_radius: 1.0,
+    // Ticks with nothing held before a plan starts, so the blob has landed.
+    settle_ticks: 60,
+    // A goal point is reached when the blob's centre is in a box this far
+    // from it each way (half width, half height)...
+    goal_half: (1.0, 1.0),
+    // ...while touching a surface (flying past doesn't count) and moving
+    // no faster than this (rolling across doesn't either), in m/s.
+    goal_contact: true,
+    goal_max_speed: 4.0,
     // A cell's score is its distance to the goal, plus this much per tick
     // taken to reach it, plus this much per time it was already expanded.
     time_weight: 0.002,

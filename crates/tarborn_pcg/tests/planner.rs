@@ -28,7 +28,7 @@ fn reaches_all(id: &str, goals: &[Vec2]) {
     let start = room(id);
     let mut missed = Vec::new();
     for &goal in goals {
-        let plan = planner.plan(&start, goal);
+        let plan = planner.plan(&start, planner.goal(goal));
         let Some(best) = plan.quickest() else {
             missed.push(format!("{goal} (closest {:.2} m)", plan.closest));
             continue;
@@ -42,7 +42,7 @@ fn reaches_all(id: &str, goals: &[Vec2]) {
         play_until(&mut sim, &best.tape, best.ticks, &planner.beats, |_| false);
         let off = sim.blob.center().distance(goal);
         assert!(
-            off <= p.goal_radius,
+            planner.goal(goal).reached(&sim),
             "{id} {goal}: replay ends {off:.2} m away"
         );
         assert!(!best.beats.is_empty(), "{id} {goal}: no beats");
@@ -82,7 +82,8 @@ fn reaches_every_target_in_the_arena() {
 
 #[test]
 fn keeps_distinct_solutions() {
-    let plan = planner().plan(&room("training"), Vec2::new(-3.5, 8.6));
+    let planner = planner();
+    let plan = planner.plan(&room("training"), planner.goal(Vec2::new(-3.5, 8.6)));
     let kinds: Vec<_> = plan.solutions.iter().map(|s| s.beat_kinds()).collect();
     assert!(kinds.len() >= 2, "{kinds:?}");
     for (i, a) in kinds.iter().enumerate() {
@@ -95,7 +96,7 @@ fn keeps_distinct_solutions() {
 
 #[test]
 fn planning_is_deterministic() {
-    let goal = Vec2::new(-9.0, 6.0);
+    let goal = planner().goal(Vec2::new(-9.0, 6.0));
     let a = planner().plan(&room("training"), goal);
     let b = planner().plan(&room("training"), goal);
     assert_eq!(a, b);
@@ -108,7 +109,7 @@ fn gives_up_on_a_goal_inside_a_wall() {
         ..PlannerParams::default()
     };
     let planner = Planner::new(params, BeatParams::default());
-    let plan = planner.plan(&room("training"), Vec2::new(0.0, -1.0));
+    let plan = planner.plan(&room("training"), planner.goal(Vec2::new(0.0, -1.0)));
     assert!(!plan.reached());
     assert_eq!(plan.iterations, 5);
 }

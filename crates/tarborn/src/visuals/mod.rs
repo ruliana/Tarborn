@@ -585,6 +585,8 @@ fn build_actors(
                     lid: shade(color),
                     crossed: prone,
                     x_width: f.x_width,
+                    border: 0.0,
+                    border_color: Color::NONE,
                 },
             );
             if set.brow > 0.0 && !prone {
@@ -767,7 +769,7 @@ fn blob_eyes(
     let white = srgb(b.white);
     for off in face::eye_offsets(&b.eyes) {
         let local = Vec2::new(off.x * facing, off.y) * radius;
-        let pos = mem.eyes + local;
+        let pos = mem.eyes + local + mem.gaze.clamp_length_max(1.0) * b.gaze_shift * radius;
         let side = if local.x.abs() > 1e-3 {
             local.x.signum()
         } else {
@@ -796,6 +798,8 @@ fn blob_eyes(
                 lid: srgb(tuning.tar.body),
                 crossed: sim.dead,
                 x_width: tuning.face.x_width,
+                border: b.border,
+                border_color: srgb(b.border_color),
             },
         );
     }

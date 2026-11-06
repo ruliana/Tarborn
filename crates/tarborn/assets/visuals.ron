@@ -124,9 +124,10 @@
             fleeing:   (open: 1.0,  scale: 1.25, pupil: 0.6,  slant: -0.3,  stretch: 1.05, lean: 0.3,   wobble: 0.08, wobble_hz: 5.0, bob: 0.05, bob_hz: 6.0),
             dodging:   (open: 0.9,  scale: 1.1,  pupil: 0.7,  slant: -0.1,  stretch: 1.25, lean: -0.2,  wobble: 0.0,  wobble_hz: 0.0, bob: 0.0,  bob_hz: 0.0),
         ),
-        // The tar blob: pale eyes with dark pupils, sloshing in the goo.
+        // The tar blob: large, tall, hollow pale eyes (pupil 0) with a dark
+        // border, sloshing in the goo.
         blob: (
-            eyes: (count: 2, layout: Row, size: (0.30, 0.36), spacing: 0.42, offset: (0.22, 0.22), pupil: 0.5, stalk: 0.0, brow: 0.0),
+            eyes: (count: 2, layout: Row, size: (0.36, 0.62), spacing: 0.5, offset: (0.2, 0.18), pupil: 0.0, stalk: 0.0, brow: 0.0),
             white: (0.97, 0.94, 0.88),
             pupil: (0.07, 0.055, 0.05),
             idle:   (open: 1.0, scale: 1.0,  pupil: 1.0, slant: 0.0,  stretch: 1.0, lean: 0.0, wobble: 0.0, wobble_hz: 0.0, bob: 0.0, bob_hz: 0.0),
@@ -138,6 +139,10 @@
             slosh_stiffness: 220.0,
             slosh_damping: 9.0,
             slosh_max: 0.25,
+            // Hollow eyes show where they look by shifting that way.
+            gaze_shift: 0.12,
+            border: 2.0,
+            border_color: (0.02, 0.015, 0.015),
             // Glances at the nearest enemy this close (metres).
             glance_range: 5.0,
         ),

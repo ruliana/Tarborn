@@ -139,6 +139,13 @@ pub struct BlobFace {
     pub slosh_damping: f32,
     /// Furthest the eyes slosh from their place (fraction of the blob radius).
     pub slosh_max: f32,
+    /// The eyes shift this far toward where they look (fraction of the blob
+    /// radius), which is how hollow eyes show a gaze.
+    pub gaze_shift: f32,
+    /// A dark ring around each eye (px), so eyes that slosh past the edge
+    /// of the body still read.
+    pub border: f32,
+    pub border_color: Rgb,
     /// Looks at the nearest enemy this close (metres).
     pub glance_range: f32,
 }
@@ -303,6 +310,9 @@ pub struct Eye {
     /// Knocked out: an X instead of an eye.
     pub crossed: bool,
     pub x_width: f32,
+    /// A ring around the eye, px (0 = none), so it reads even off the body.
+    pub border: f32,
+    pub border_color: Color,
 }
 
 const EYE_SEGMENTS: usize = 16;
@@ -338,17 +348,34 @@ pub fn draw_eye(fill: &mut Fill, eye: &Eye) {
     if eye.crossed {
         let w = eye.size.x * eye.x_width;
         let (a, b) = (Vec2::new(r.x, r.y), Vec2::new(r.x, -r.y));
+        if eye.border > 0.0 {
+            let (ea, eb) = (
+                a + a.normalize() * eye.border,
+                b + b.normalize() * eye.border,
+            );
+            let wb = w + eye.border * 2.0;
+            fill.segment(eye.center - ea, eye.center + ea, wb, eye.border_color);
+            fill.segment(eye.center - eb, eye.center + eb, wb, eye.border_color);
+        }
         fill.segment(eye.center - a, eye.center + a, w, eye.white);
         fill.segment(eye.center - b, eye.center + b, w, eye.white);
         return;
     }
+    if eye.border > 0.0 {
+        fill.polygon(
+            &ellipse_points(eye.center, r + Vec2::splat(eye.border)),
+            eye.border_color,
+        );
+    }
     let outline = ellipse_points(eye.center, r);
     fill.polygon(&outline, eye.white);
-    // The pupil stays inside the eye.
-    let pr = (eye.pupil * 0.5).min(r.x).min(r.y);
-    let room = (r - Vec2::splat(pr)).max(Vec2::ZERO);
-    let gaze = eye.gaze.clamp_length_max(1.0);
-    fill.circle(eye.center + gaze * room, pr, 10, eye.iris);
+    // The pupil stays inside the eye. No pupil makes a hollow eye.
+    if eye.pupil > 0.0 {
+        let pr = (eye.pupil * 0.5).min(r.x).min(r.y);
+        let room = (r - Vec2::splat(pr)).max(Vec2::ZERO);
+        let gaze = eye.gaze.clamp_length_max(1.0);
+        fill.circle(eye.center + gaze * room, pr, 10, eye.iris);
+    }
     // The lid covers the eye from the top down to a tilted line.
     let open = eye.open.clamp(0.0, 1.0);
     if open < 0.999 {

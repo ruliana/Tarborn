@@ -25,6 +25,14 @@ opt-level = 1
 [profile.dev.package."*"]
 opt-level = 3
 
+# The simulation and the generators run thousands of simulated seconds in
+# tests (bots search in the full sim), so build them fully optimised too.
+[profile.dev.package.tarborn_sim]
+opt-level = 3
+
+[profile.dev.package.tarborn_pcg]
+opt-level = 3
+
 [profile.release]
 codegen-units = 1
 lto = "thin"

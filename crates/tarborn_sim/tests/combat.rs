@@ -107,10 +107,35 @@ fn rolling_gently_into_a_dummy_does_not_hurt_it() {
     assert!(hits(&events).is_empty(), "{events:?}");
 }
 
+/// Running into an enemy doesn't hurt it, from any run-up, in any mode.
+#[test]
+fn rolling_into_a_dummy_from_any_run_up_does_not_hurt_it() {
+    for modes in [TarModes::default(), BOUNCY] {
+        for gap in [0.5, 1.0, 2.0, 3.0, 4.0, 6.0, 10.0, 25.0] {
+            let mut sim = facing_dummy(gap);
+            let mut events = Vec::new();
+            let mut closest = f32::INFINITY;
+            for _ in 0..ticks(6.0) {
+                events.extend(sim.step(Intent {
+                    roll: 1.0,
+                    modes,
+                    ..Default::default()
+                }));
+                closest = closest.min(sim.blob.center().distance(sim.enemies[0].position));
+            }
+            assert!(
+                closest < 1.3,
+                "{modes:?} gap={gap}: never reached the dummy"
+            );
+            assert!(hits(&events).is_empty(), "{modes:?} gap={gap}: {events:?}");
+        }
+    }
+}
+
 #[test]
 fn sliding_into_a_dummy_fast_hurts_it() {
     let mut sim = facing_dummy(1.5);
-    sim.blob.set_velocity(v(14.0, 0.0));
+    sim.blob.set_velocity(v(18.0, 0.0));
     let events = run(
         &mut sim,
         Intent {

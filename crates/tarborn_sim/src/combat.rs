@@ -23,7 +23,9 @@ pub struct CombatParams {
     pub shockwave_damage: f32,
     pub shockwave_radius: f32,
     pub pogo_damage: f32,
-    /// Closing speed above which rolling or bouncing into an enemy hurts it.
+    /// Closing speed above which hitting an enemy hurts it. Above the top
+    /// rolling speed (about 13.5 m/s), so running into an enemy doesn't hurt
+    /// it; being flung, thrown or launched into one does.
     pub impact_speed: f32,
     /// Damage per m/s of closing speed above `impact_speed`.
     pub impact_damage_per_speed: f32,
@@ -62,7 +64,7 @@ impl Default for CombatParams {
             shockwave_damage: 20.0,
             shockwave_radius: 2.5,
             pogo_damage: 15.0,
-            impact_speed: 10.0,
+            impact_speed: 15.0,
             impact_damage_per_speed: 3.0,
             impact_min_damage: 8.0,
             knockback: 8.0,

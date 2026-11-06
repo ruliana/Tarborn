@@ -7,6 +7,8 @@ use bevy::prelude::*;
 use serde::Deserialize;
 
 use super::dressing::shape::ShapeParams;
+use super::face::FaceLook;
+use super::stains::StainLook;
 
 /// The tuning file next to this crate's Cargo.toml. Its contents are also
 /// compiled in, so the game still has a look when the file isn't there.
@@ -32,6 +34,8 @@ pub struct VisualTuning {
     pub dressing: DressingLook,
     pub tar: TarLook,
     pub enemy: EnemyLook,
+    pub face: FaceLook,
+    pub stains: StainLook,
     pub post: PostLook,
 }
 

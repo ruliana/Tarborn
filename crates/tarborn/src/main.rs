@@ -64,13 +64,15 @@ enum Room {
     Training,
     /// Slopes, arcs, an arch and ledges, to see the level dressing on.
     Dressing,
+    /// The training room with the lights out: only eyes show.
+    Dark,
 }
 
 impl Room {
     fn spawn(self) -> Vec2 {
         match self {
             Room::Arena => ARENA_SPAWN,
-            Room::Training | Room::Dressing => SPAWN,
+            Room::Training | Room::Dressing | Room::Dark => SPAWN,
         }
     }
 
@@ -78,7 +80,7 @@ impl Room {
     fn zoom(self, params: &CameraParams) -> f32 {
         match self {
             Room::Arena => params.zoom.arena,
-            Room::Training | Room::Dressing => params.zoom.training,
+            Room::Training | Room::Dressing | Room::Dark => params.zoom.training,
         }
     }
 }
@@ -95,6 +97,8 @@ struct Game {
     dead_for: f32,
     /// Simulation events since the camera last looked, for screen shake.
     events: Vec<Event>,
+    /// Simulation events since the visuals last looked, for stains and faces.
+    visual_events: Vec<Event>,
     /// Just (re)started: the camera jumps to the spawn instead of gliding.
     fresh: bool,
 }
@@ -103,7 +107,7 @@ impl Game {
     fn new(room: Room) -> Self {
         let sim = match room {
             Room::Arena => Sim::arena_room(),
-            Room::Training => Sim::training_room(SPAWN),
+            Room::Training | Room::Dark => Sim::training_room(SPAWN),
             Room::Dressing => Sim::dressing_room(SPAWN),
         };
         Self {
@@ -112,6 +116,7 @@ impl Game {
             previous_enemies: sim.enemies.iter().map(|e| e.position).collect(),
             dead_for: 0.0,
             events: Vec::new(),
+            visual_events: Vec::new(),
             fresh: true,
             sim,
         }
@@ -230,7 +235,8 @@ fn read_input(
         let other = match game.room {
             Room::Arena => Room::Training,
             Room::Training => Room::Dressing,
-            Room::Dressing => Room::Arena,
+            Room::Dressing => Room::Dark,
+            Room::Dark => Room::Arena,
         };
         *game = Game::new(other);
     }
@@ -264,6 +270,7 @@ fn tick(
         .extend(game.sim.enemies.iter().map(|e| e.position));
     let events = game.sim.step(intent);
     sound.observe(&game.sim, &events);
+    game.visual_events.extend_from_slice(&events);
     game.events.extend(events);
 }
 
@@ -485,6 +492,8 @@ fn draw(
                 game.enemy_position(i, alpha),
                 time.elapsed_secs(),
                 ink,
+                *look,
+                game.room == Room::Dark,
             );
             // A tar ring on an enemy that is held or flying after a throw.
             if lines && (enemy.held || enemy.thrown) {
@@ -541,19 +550,36 @@ fn draw(
     }
 }
 
+/// Each kind's own color, for outlines.
+fn kind_color(kind: EnemyKind) -> Color {
+    match kind {
+        EnemyKind::Dummy => Color::srgb(0.6, 0.6, 0.65),
+        EnemyKind::Grub => Color::srgb(0.75, 0.55, 0.85),
+        EnemyKind::Guard => Color::srgb(0.45, 0.6, 0.95),
+        EnemyKind::Spitter => Color::srgb(0.95, 0.6, 0.35),
+        EnemyKind::Skitter => Color::srgb(0.95, 0.9, 0.4),
+        EnemyKind::Brute => Color::srgb(0.75, 0.35, 0.3),
+    }
+}
+
 /// Enemies are plain shapes whose colour and marks show their state, so the
-/// player can read how vulnerable each one is at a glance.
-fn draw_enemy(gizmos: &mut Gizmos, enemy: &Enemy, at: Vec2, now: f32, ink: Ink) {
+/// player can read how vulnerable each one is at a glance. In the filled
+/// looks the body, eyes and state marks are meshes (see `visuals`), so only
+/// the attack telegraphs are drawn here.
+#[allow(clippy::too_many_arguments)]
+fn draw_enemy(
+    gizmos: &mut Gizmos,
+    enemy: &Enemy,
+    at: Vec2,
+    now: f32,
+    ink: Ink,
+    look: Look,
+    dark: bool,
+) {
     let r = enemy.radius * PIXELS_PER_METER;
     let facing = Vec2::X * enemy.facing;
-    let base = match enemy.kind {
-        EnemyKind::Dummy => ink.apply(Color::srgb(0.6, 0.6, 0.65)),
-        EnemyKind::Grub => ink.apply(Color::srgb(0.75, 0.55, 0.85)),
-        EnemyKind::Guard => ink.apply(Color::srgb(0.45, 0.6, 0.95)),
-        EnemyKind::Spitter => ink.apply(Color::srgb(0.95, 0.6, 0.35)),
-        EnemyKind::Skitter => ink.apply(Color::srgb(0.95, 0.9, 0.4)),
-        EnemyKind::Brute => ink.apply(Color::srgb(0.75, 0.35, 0.3)),
-    };
+    let lines = !look.filled();
+    let base = ink.apply(kind_color(enemy.kind));
     let flash = ((now * 20.0) as u32).is_multiple_of(2);
     let color = match enemy.state {
         _ if enemy.hit_cooldown > 0.0 => ink.apply(Color::WHITE),
@@ -568,6 +594,7 @@ fn draw_enemy(gizmos: &mut Gizmos, enemy: &Enemy, at: Vec2, now: f32, ink: Ink) 
 
     // Body.
     match (enemy.kind, enemy.state) {
+        _ if !lines => {}
         (_, State::Prone) => {
             gizmos.rect_2d(
                 Isometry2d::from_translation(at - Vec2::Y * r * 0.5),
@@ -647,7 +674,7 @@ fn draw_enemy(gizmos: &mut Gizmos, enemy: &Enemy, at: Vec2, now: f32, ink: Ink) 
             ink.apply(Color::srgba(1.0, 0.4, 0.2, 0.5)),
         );
     }
-    if enemy.kind != EnemyKind::Dummy && enemy.state != State::Prone {
+    if lines && enemy.kind != EnemyKind::Dummy && enemy.state != State::Prone {
         // An eye on the side it faces.
         gizmos.circle_2d(at + facing * r * 0.45 + Vec2::Y * r * 0.3, 2.5, color);
     }
@@ -679,6 +706,7 @@ fn draw_enemy(gizmos: &mut Gizmos, enemy: &Enemy, at: Vec2, now: f32, ink: Ink) 
     // A mark above the head for the states that matter.
     let head = at + Vec2::Y * (r + 14.0);
     match enemy.state {
+        _ if !lines => {}
         State::Surprised => {
             let white = ink.apply(Color::WHITE);
             gizmos.line_2d(head, head + Vec2::Y * 12.0, white);
@@ -712,7 +740,7 @@ fn draw_enemy(gizmos: &mut Gizmos, enemy: &Enemy, at: Vec2, now: f32, ink: Ink) 
         _ => {}
     }
 
-    if enemy.health < enemy.max_health {
+    if enemy.health < enemy.max_health && !dark {
         let left = at + Vec2::new(-r, r + 6.0);
         let full = 2.0 * r;
         let filled = full * enemy.health / enemy.max_health;

@@ -1,0 +1,25 @@
+// Placeholder stage until stages are assembled from the generated library.
+(
+    id: "climb",
+    meta: (generator: "placeholder"),
+    bounds: ((0.0, 0.0), (30.0, 20.0)),
+    solids: [
+        Rect((0.0, 0.0), (30.0, 2.0)),
+        Rect((0.0, 5.0), (1.0, 19.0)),
+        Rect((29.0, 2.0), (30.0, 14.0)),
+        Rect((29.0, 17.0), (30.0, 19.0)),
+        Rect((0.0, 19.0), (30.0, 20.0)),
+        Rect((14.0, 2.0), (18.0, 14.0)),
+        Rect((18.0, 13.5), (29.0, 14.0)),
+    ],
+    enemies: [
+        (kind: Spitter, at: (24.0, 14.45), facing: -1.0),
+        (kind: Grub, at: (8.0, 2.35)),
+    ],
+    sockets: [
+        (side: Left, at: 3.5, width: 3.0, kind: Walk),
+        (side: Right, at: 15.5, width: 3.0, kind: Walk),
+    ],
+    routes: [(from: 0, to: 1)],
+    spawn: Some((3.0, 3.0)),
+)

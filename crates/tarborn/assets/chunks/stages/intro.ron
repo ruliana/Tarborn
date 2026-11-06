@@ -1,0 +1,25 @@
+// Placeholder stage until stages are assembled from the generated library.
+(
+    id: "intro",
+    meta: (generator: "placeholder"),
+    bounds: ((0.0, 0.0), (40.0, 14.0)),
+    solids: [
+        Rect((0.0, 0.0), (16.0, 2.0)),
+        Rect((16.0, 0.0), (20.0, 0.5)),
+        Rect((20.0, 0.0), (40.0, 2.0)),
+        Rect((0.0, 5.0), (1.0, 13.0)),
+        Rect((39.0, 5.0), (40.0, 13.0)),
+        Rect((0.0, 13.0), (40.0, 14.0)),
+        Rect((24.0, 5.0), (30.0, 5.5)),
+    ],
+    enemies: [
+        (kind: Grub, at: (10.0, 2.35)),
+        (kind: Guard, at: (34.0, 2.6), facing: -1.0),
+    ],
+    sockets: [
+        (side: Left, at: 3.5, width: 3.0, kind: Walk),
+        (side: Right, at: 3.5, width: 3.0, kind: Walk),
+    ],
+    routes: [(from: 0, to: 1)],
+    spawn: Some((3.0, 3.0)),
+)

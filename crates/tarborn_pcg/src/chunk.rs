@@ -132,6 +132,16 @@ impl Socket {
         }
     }
 
+    /// The region just inside the opening, `depth` metres deep: the blob's
+    /// centre in it has passed through the socket.
+    pub fn region(&self, bounds: (Vec2, Vec2), depth: f32) -> (Vec2, Vec2) {
+        let (a, b) = self.ends(bounds);
+        let mid = (a + b) * 0.5 + self.inward() * depth * 0.5;
+        let along = (b - a).abs() * 0.5;
+        let across = self.inward().abs() * depth * 0.5;
+        (mid, along + across)
+    }
+
     /// Unit vector pointing from the border into the chunk.
     pub fn inward(&self) -> Vec2 {
         match self.side {

@@ -148,6 +148,15 @@ slam, grab-and-throw, and fights. `tarborn_pcg::tape` plays an input tape
 names what the blob actually did. Its thresholds are in
 [`assets/pcg/beats.ron`](crates/tarborn/assets/pcg/beats.ron).
 
+The **planner bot** (`tarborn_pcg::planner`) finds tapes that take the blob
+to a goal. It is a Go-Explore style search over macro-actions (roll, tap or
+hold Jump, Grip with a direction, burst, slam) in the full simulation: it
+keeps the quickest state reaching each 0.5 m cell and expands the cells
+closest to the goal plus a few at random. It keeps up to N solutions with
+different beat sequences, and checks each one against K enemy variations
+(enemies nudged sideways, random facing). Its knobs, macro list included,
+are in [`assets/pcg/planner.ron`](crates/tarborn/assets/pcg/planner.ron).
+
 ### Combat
 
 The test room has a training dummy (grey circle with a cross), grubs (small

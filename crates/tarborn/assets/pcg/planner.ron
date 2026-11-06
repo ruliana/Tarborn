@@ -1,0 +1,53 @@
+// The planner bot: a Go-Explore style search over macro-actions in the
+// full simulation. Times are ticks at 120 Hz, distances metres.
+(
+    // Blob positions are bucketed into cells this big; the search keeps the
+    // quickest way it found into each cell.
+    cell: 0.5,
+    // Cells expanded per iteration: the closest to the goal...
+    beam: 12,
+    // ...plus this many picked at random, so the search doesn't get stuck
+    // behind a wall.
+    explore: 6,
+    iterations: 400,
+    // The longest plan, in ticks.
+    tick_budget: 1800,
+    // Close enough to the goal, measured from the blob's centre.
+    goal_radius: 1.0,
+    // A cell's score is its distance to the goal, plus this much per tick
+    // taken to reach it, plus this much per time it was already expanded.
+    time_weight: 0.002,
+    visit_weight: 0.6,
+    // How long each macro-action is held, in ticks.
+    durations: [12, 30, 60],
+    // A tapped Jump is held this long, then let go.
+    tap_ticks: 6,
+    // The macro-actions. dir is the stick; jump is None, Tap or Hold.
+    macros: [
+        (dir: (-1.0, 0.0), jump: None, grip: false),
+        (dir: (1.0, 0.0), jump: None, grip: false),
+        (dir: (0.0, 0.0), jump: None, grip: false),
+        (dir: (-1.0, 0.0), jump: Tap, grip: false),
+        (dir: (1.0, 0.0), jump: Tap, grip: false),
+        (dir: (0.0, 0.0), jump: Tap, grip: false),
+        (dir: (-1.0, 0.0), jump: Hold, grip: false),
+        (dir: (1.0, 0.0), jump: Hold, grip: false),
+        (dir: (0.0, -1.0), jump: Tap, grip: false),
+        (dir: (-1.0, 0.0), jump: None, grip: true),
+        (dir: (1.0, 0.0), jump: None, grip: true),
+        (dir: (0.0, 1.0), jump: None, grip: true),
+        (dir: (-0.7, 0.7), jump: Tap, grip: true),
+        (dir: (0.7, 0.7), jump: Tap, grip: true),
+        (dir: (0.0, 1.0), jump: Tap, grip: true),
+    ],
+    // Distinct solutions kept per goal (different beat sequences).
+    solutions: 3,
+    // Each solution is checked against this many enemy variations...
+    enemy_seeds: 4,
+    // ...and passes if it works on at least this share of them.
+    pass_share: 0.75,
+    // How far enemies are moved sideways in a variation, at most.
+    enemy_jitter: 0.6,
+    // Extra ticks allowed when replaying a solution on a variation.
+    replay_slack: 120,
+)

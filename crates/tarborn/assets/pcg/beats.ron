@@ -1,0 +1,26 @@
+// How the beat detector reads play, used by bots and telemetry alike.
+// Times are seconds, distances metres, speeds metres per second.
+(
+    // Rolling: on the ground, moving at least this fast, for at least this long.
+    roll_min_speed: 2.0,
+    roll_min_time: 0.25,
+    // A contact normal with y above this is a floor, below the ceiling
+    // value a ceiling, and with |x| above the wall value a wall.
+    floor_normal_y: 0.5,
+    ceiling_normal_y: -0.5,
+    wall_normal_x: 0.7,
+    // Stuck to a wall or ceiling (Grip held, no floor under) for this long.
+    stick_min_time: 0.3,
+    // Falling this far after leaving a surface without a jump, burst or lunge.
+    drop_min_height: 1.5,
+    // A move this soon before leaving the ground counts as what launched it.
+    launch_grace: 0.1,
+    // Bounces closer together than this count as one.
+    bounce_min_gap: 0.15,
+    // Hits on enemies less than this far apart belong to one fight.
+    fight_window: 2.0,
+    // A fight counts once it has killed this many enemies.
+    fight_min_kills: 1,
+    // A lunge names the nearest enemy within this many lunge ranges.
+    lunge_target_reach: 1.5,
+)

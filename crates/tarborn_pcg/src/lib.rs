@@ -6,12 +6,17 @@
 //! metrics, the offline chunk generator and the runtime assembler all build
 //! on this crate, and none of it depends on Bevy.
 
+pub mod beats;
 pub mod chunk;
+pub mod tape;
 
 pub use chunk::{
     Chunk, ChunkError, ChunkParams, EnemySlot, Meta, Route, Scores, Shape, Side, Socket,
     SocketKind, solid_bounds,
 };
+
+pub use beats::{Beat, BeatDetector, BeatKind, BeatParams};
+pub use tape::{Buttons, Change, Run, Tape, play, play_until};
 
 use std::path::PathBuf;
 

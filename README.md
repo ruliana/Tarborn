@@ -141,6 +141,13 @@ chunk geometry rules (grid cell, narrowest socket) are in
 from the rooms built in `tarborn_sim`, and `cargo test -p tarborn_pcg`
 checks that the files still play tick for tick like those rooms.
 
+Bots and telemetry read play as **beats**, the moves the two verbs produce:
+roll, jump, burst, stick to a wall or ceiling, drop, bounce, lunge, pogo,
+slam, grab-and-throw, and fights. `tarborn_pcg::tape` plays an input tape
+(button and direction changes by tick) headlessly, and the beat detector
+names what the blob actually did. Its thresholds are in
+[`assets/pcg/beats.ron`](crates/tarborn/assets/pcg/beats.ron).
+
 ### Combat
 
 The test room has a training dummy (grey circle with a cross), grubs (small

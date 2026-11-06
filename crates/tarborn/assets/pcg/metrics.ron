@@ -1,0 +1,40 @@
+// How routes are scored from what the bots did. Times are seconds unless
+// they say ticks.
+(
+    // Difficulty: each required input is moved earlier and later in steps
+    // of this many ticks, up to max_shift ticks each way, and the widest
+    // window that still works is kept.
+    window_step: 2,
+    max_shift: 36,
+    // An input's strictness is exp(-window / window_scale): a 0.1 s window
+    // is strict, a 0.6 s one relaxed.
+    window_scale: 0.25,
+    // Route difficulty = max_weight * the strictest input
+    //                  + mean_weight * the average strictness.
+    max_weight: 0.6,
+    mean_weight: 0.4,
+    // Extra ticks a changed tape may take to reach the goal.
+    replay_slack: 60,
+    // Novelty compares beat n-grams of every size from 1 up to this.
+    ngram: 3,
+    // ...against this many nearest routes.
+    nearest: 3,
+    // Points the report CLI measures in the hand-built rooms, from each
+    // room's spawn.
+    probes: [
+        (room: "training", goals: [
+            (5.0, 1.0),
+            (-3.5, 8.6),
+            (-9.0, 6.0),
+            (16.0, 4.8),
+            (0.0, 11.3),
+        ]),
+        (room: "arena", goals: [
+            (-11.0, 6.2),
+            (11.0, 6.2),
+            (-17.0, 0.6),
+            (19.0, 3.2),
+            (0.0, 15.0),
+        ]),
+    ],
+)

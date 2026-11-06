@@ -46,7 +46,10 @@ pub struct PlannerParams {
     pub explore: usize,
     pub iterations: usize,
     pub tick_budget: u64,
-    pub goal_radius: f32,
+    pub settle_ticks: u64,
+    pub goal_half: Vec2,
+    pub goal_contact: bool,
+    pub goal_max_speed: f32,
     pub time_weight: f32,
     pub visit_weight: f32,
     pub durations: Vec<u64>,
@@ -69,6 +72,39 @@ impl PlannerParams {
     pub fn load(path: &Path) -> Result<Self, ChunkError> {
         let text = std::fs::read_to_string(path).map_err(|e| ChunkError::Io(e.to_string()))?;
         ron::from_str(&text).map_err(|e| ChunkError::Parse(e.to_string()))
+    }
+}
+
+/// Where a route ends and what counts as arriving there.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Goal {
+    /// The middle of the goal region.
+    pub at: Vec2,
+    /// Half its size: the blob's centre must be inside the box...
+    pub half: Vec2,
+    /// ...while touching something, so flying past doesn't count...
+    pub contact: bool,
+    /// ...and moving no faster than this, so rolling across doesn't either.
+    pub max_speed: f32,
+}
+
+impl Goal {
+    pub fn reached(&self, sim: &Sim) -> bool {
+        !sim.dead
+            && self.distance(sim) == 0.0
+            && (!self.contact || sim.blob.touching_count() > 0)
+            && sim.blob.velocity().length() <= self.max_speed
+    }
+
+    /// How far the blob's centre is from the goal region, 0 inside it.
+    pub fn distance(&self, sim: &Sim) -> f32 {
+        let d = (sim.blob.center() - self.at).abs() - self.half;
+        d.max(Vec2::ZERO).length()
+    }
+
+    /// The same rules around another point.
+    pub fn moved_to(self, at: Vec2) -> Self {
+        Self { at, ..self }
     }
 }
 
@@ -169,10 +205,29 @@ impl Planner {
         Self { params, beats }
     }
 
+    /// `sim` after `settle_ticks` with nothing held, so plans start from a
+    /// blob at rest rather than one still dropping in at its spawn.
+    pub fn settle(&self, sim: &Sim) -> Sim {
+        let mut sim = sim.clone();
+        for _ in 0..self.params.settle_ticks {
+            sim.step(crate::tape::intent(Buttons::NONE, Buttons::NONE));
+        }
+        sim
+    }
+
+    /// A goal at `at`, with the arrival rules from the parameters.
+    pub fn goal(&self, at: Vec2) -> Goal {
+        Goal {
+            at,
+            half: self.params.goal_half,
+            contact: self.params.goal_contact,
+            max_speed: self.params.goal_max_speed,
+        }
+    }
+
     /// Searches for up to `solutions` distinct tapes that take the blob in
-    /// `start` to within `goal_radius` of `goal`, then checks each against
-    /// enemy variations.
-    pub fn plan(&self, start: &Sim, goal: Vec2) -> Plan {
+    /// `start` to `goal`, then checks each against enemy variations.
+    pub fn plan(&self, start: &Sim, goal: Goal) -> Plan {
         let p = &self.params;
         let mut rng = Rng::new(0x7a7b_0123);
         let mut archive: BTreeMap<Cell, Node> = BTreeMap::new();
@@ -188,14 +243,12 @@ impl Planner {
             },
         );
         let mut plan = Plan {
-            closest: start.blob.center().distance(goal),
+            closest: goal.distance(start),
             ..Plan::default()
         };
         let mut found: Vec<Solution> = Vec::new();
         let score = |n: &Node| {
-            n.sim.blob.center().distance(goal)
-                + p.time_weight * n.tick as f32
-                + p.visit_weight * n.visits as f32
+            goal.distance(&n.sim) + p.time_weight * n.tick as f32 + p.visit_weight * n.visits as f32
         };
 
         for iteration in 0..p.iterations {
@@ -230,7 +283,7 @@ impl Planner {
                         if node.sim.dead {
                             continue;
                         }
-                        plan.closest = plan.closest.min(node.sim.blob.center().distance(goal));
+                        plan.closest = plan.closest.min(goal.distance(&node.sim));
                         if reached {
                             add_distinct(
                                 &mut found,
@@ -268,7 +321,7 @@ impl Planner {
 
     /// Runs one macro-action on `node`, a tick at a time. True if the blob
     /// came within reach of the goal; the tape then ends at that tick.
-    fn extend(&self, node: &mut Node, m: Macro, duration: u64, goal: Vec2) -> bool {
+    fn extend(&self, node: &mut Node, m: Macro, duration: u64, goal: Goal) -> bool {
         let p = &self.params;
         let base = Buttons {
             jump: false,
@@ -301,7 +354,7 @@ impl Planner {
             if node.sim.dead {
                 return false;
             }
-            if node.sim.blob.center().distance(goal) <= p.goal_radius {
+            if goal.reached(&node.sim) {
                 return true;
             }
         }
@@ -309,9 +362,9 @@ impl Planner {
     }
 
     /// Replays a solution on every enemy variation, for its pass rate.
-    fn verify(&self, start: &Sim, goal: Vec2, mut solution: Solution) -> Solution {
+    fn verify(&self, start: &Sim, goal: Goal, mut solution: Solution) -> Solution {
         let p = &self.params;
-        let reach = |sim: &Sim| sim.blob.center().distance(goal) <= p.goal_radius;
+        let reach = |sim: &Sim| goal.reached(sim);
         let seeds = p.enemy_seeds.max(1);
         let mut passed = 0;
         for seed in 0..seeds {
@@ -319,7 +372,7 @@ impl Planner {
             vary_enemies(&mut sim, seed, p.enemy_jitter);
             let ticks = solution.ticks + p.replay_slack;
             play_until(&mut sim, &solution.tape, ticks, &self.beats, reach);
-            if reach(&sim) && !sim.dead {
+            if reach(&sim) {
                 passed += 1;
             }
         }

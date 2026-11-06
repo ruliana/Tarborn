@@ -1,0 +1,15 @@
+// Chunk geometry rules, read by tarborn_pcg. Units are metres.
+(
+    // Grid cell: chunk bounds and socket centres snap to it so assembly can
+    // line chunks up.
+    cell: 0.5,
+    // The narrowest socket. The blob is 1 m across at full size and has no
+    // squeeze form, so leave it room.
+    min_socket_width: 1.5,
+    // How far off the grid a value may sit and still count as snapped.
+    snap_epsilon: 0.001,
+    // Points checked along a socket's opening for solids in the way.
+    socket_clear_samples: 9,
+    // How far inside the chunk that check looks.
+    socket_clear_inset: 0.25,
+)

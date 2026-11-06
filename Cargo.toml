@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["crates/tarborn_sim", "crates/tarborn_sfx", "crates/tarborn"]
+members = ["crates/tarborn_sim", "crates/tarborn_sfx", "crates/tarborn_pcg", "crates/tarborn"]
 
 [workspace.package]
 version = "0.1.0"
@@ -14,6 +14,9 @@ glam = "0.33"
 bevy = { version = "0.20.1", default-features = false, features = ["2d", "audio"] }
 tarborn_sim = { path = "crates/tarborn_sim" }
 tarborn_sfx = { path = "crates/tarborn_sfx" }
+tarborn_pcg = { path = "crates/tarborn_pcg" }
+serde = { version = "1.0.229", features = ["derive"] }
+ron = "0.12.3"
 
 # Bevy is unusably slow at opt-level 0. Optimise our code a little and dependencies fully.
 [profile.dev]

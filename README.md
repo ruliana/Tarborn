@@ -16,6 +16,8 @@ crates/
   tarborn_sim/   Simulation core: blob solver, level collision, controls feel.
                  Pure Rust + glam. All gameplay rules live here.
   tarborn_sfx/   Procedural sound synthesis (sfxr-style, layered). No engine.
+  tarborn_pcg/   Level generation: chunk files, bots, metrics, generators.
+                 Depends only on tarborn_sim, never on Bevy.
   tarborn/       The Bevy game: input, fixed 120 Hz tick, rendering, sound.
 ```
 
@@ -128,6 +130,16 @@ by brutes. Kills drop tar that heals. Dying restarts the arena.
 Press T to switch to the **training room**, which has one of each enemy (they
 respawn) and some terrain to try moves on. Press it again for the **dressing
 room** (slopes and arcs, a grub and a guard), and again to return to the arena.
+
+Every room is data: a chunk file in
+[`crates/tarborn/assets/chunks/rooms/`](crates/tarborn/assets/chunks/rooms/)
+holding its solids, hazards, enemies and waves. The game re-reads the file
+each time a room starts (R or T), so edits show up without rebuilding. The
+chunk geometry rules (grid cell, narrowest socket) are in
+[`assets/pcg/chunk.ron`](crates/tarborn/assets/pcg/chunk.ron).
+`cargo run -p tarborn_pcg --example export_rooms` rewrites the room files
+from the rooms built in `tarborn_sim`, and `cargo test -p tarborn_pcg`
+checks that the files still play tick for tick like those rooms.
 
 ### Combat
 

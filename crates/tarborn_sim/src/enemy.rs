@@ -12,6 +12,7 @@ use crate::controller::HitKind;
 use crate::level::Level;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum EnemyKind {
     /// Never moves or attacks. Respawns where it started a moment after dying.
     Dummy,
@@ -33,6 +34,7 @@ pub enum EnemyKind {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum AttackPhase {
     /// The telegraph. Hitting the enemy now interrupts it.
     Windup,
@@ -43,6 +45,7 @@ pub enum AttackPhase {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum State {
     /// Hasn't spotted the player. The first hit lands as a surprise.
     Unaware,

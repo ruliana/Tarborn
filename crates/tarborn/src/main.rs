@@ -3,6 +3,7 @@
 
 mod audio;
 mod camera;
+mod rooms;
 mod visuals;
 
 use std::path::PathBuf;
@@ -105,10 +106,12 @@ struct Game {
 
 impl Game {
     fn new(room: Room) -> Self {
+        // Rooms are read from their chunk files each time, so an edited file
+        // takes effect on the next restart (R) or room switch (T).
         let sim = match room {
-            Room::Arena => Sim::arena_room(),
-            Room::Training | Room::Dark => Sim::training_room(SPAWN),
-            Room::Dressing => Sim::dressing_room(SPAWN),
+            Room::Arena => rooms::load("arena"),
+            Room::Training | Room::Dark => rooms::load("training"),
+            Room::Dressing => rooms::load("dressing"),
         };
         Self {
             room,

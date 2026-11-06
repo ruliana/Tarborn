@@ -3,7 +3,9 @@
 
 mod audio;
 mod camera;
+mod flow;
 mod rooms;
+mod screens;
 mod visuals;
 
 use std::path::PathBuf;
@@ -44,6 +46,7 @@ fn main() {
         .init_resource::<InputLatch>()
         .add_plugins(audio::SoundPlugin)
         .add_plugins(visuals::VisualsPlugin)
+        .add_plugins(screens::ScreensPlugin)
         .add_systems(Startup, spawn_camera)
         // Sample input after Bevy has updated devices this frame but before the
         // fixed ticks run, so a press is simulated in the same frame it happened.
@@ -67,13 +70,15 @@ enum Room {
     Dressing,
     /// The training room with the lights out: only eyes show.
     Dark,
+    /// A stage of a run.
+    Stage,
 }
 
 impl Room {
     fn spawn(self) -> Vec2 {
         match self {
             Room::Arena => ARENA_SPAWN,
-            Room::Training | Room::Dressing | Room::Dark => SPAWN,
+            Room::Training | Room::Dressing | Room::Dark | Room::Stage => SPAWN,
         }
     }
 
@@ -81,7 +86,17 @@ impl Room {
     fn zoom(self, params: &CameraParams) -> f32 {
         match self {
             Room::Arena => params.zoom.arena,
-            Room::Training | Room::Dressing | Room::Dark => params.zoom.training,
+            Room::Training | Room::Dressing | Room::Dark | Room::Stage => params.zoom.training,
+        }
+    }
+
+    /// The debug room named `id` on the start screen.
+    fn from_id(id: &str) -> Self {
+        match id {
+            "arena" => Room::Arena,
+            "dressing" => Room::Dressing,
+            "dark" => Room::Dark,
+            _ => Room::Training,
         }
     }
 }
@@ -102,6 +117,10 @@ struct Game {
     visual_events: Vec<Event>,
     /// Just (re)started: the camera jumps to the spawn instead of gliding.
     fresh: bool,
+    /// Reaching this ends a run stage.
+    exit: Option<tarborn_pcg::Goal>,
+    /// The flow has been told the blob died or left.
+    reported: bool,
 }
 
 impl Game {
@@ -110,11 +129,22 @@ impl Game {
         // takes effect on the next restart (R) or room switch (T).
         let sim = match room {
             Room::Arena => rooms::load("arena"),
-            Room::Training | Room::Dark => rooms::load("training"),
+            Room::Training | Room::Dark | Room::Stage => rooms::load("training"),
             Room::Dressing => rooms::load("dressing"),
         };
+        Self::with(room, sim, None)
+    }
+
+    /// A run stage, built by the loader.
+    fn stage(sim: Sim, exit: tarborn_pcg::Goal) -> Self {
+        Self::with(Room::Stage, sim, Some(exit))
+    }
+
+    fn with(room: Room, sim: Sim, exit: Option<tarborn_pcg::Goal>) -> Self {
         Self {
             room,
+            exit,
+            reported: false,
             previous: sim.blob.positions.clone(),
             previous_enemies: sim.enemies.iter().map(|e| e.position).collect(),
             dead_for: 0.0,
@@ -170,6 +200,7 @@ fn read_input(
     gamepads: Query<&Gamepad>,
     mut latch: ResMut<InputLatch>,
     mut game: ResMut<Game>,
+    flow: Res<screens::RunFlow>,
 ) {
     let any_key = |codes: &[KeyCode]| keys.any_pressed(codes.iter().copied());
     let mut aim = Vec2::ZERO;
@@ -231,6 +262,10 @@ fn read_input(
     latch.jump_held = jump_held;
     latch.modes = modes;
 
+    // Restarting and switching rooms are for the debug rooms only.
+    if !screens::in_room(&flow.0) || !flow.0.simulating() {
+        return;
+    }
     if keys.just_pressed(KeyCode::KeyR) {
         *game = Game::new(game.room);
     }
@@ -239,7 +274,7 @@ fn read_input(
             Room::Arena => Room::Training,
             Room::Training => Room::Dressing,
             Room::Dressing => Room::Dark,
-            Room::Dark => Room::Arena,
+            Room::Dark | Room::Stage => Room::Arena,
         };
         *game = Game::new(other);
     }
@@ -249,7 +284,15 @@ fn tick(
     mut game: ResMut<Game>,
     mut latch: ResMut<InputLatch>,
     mut sound: ResMut<audio::SoundCues>,
+    flow: Res<screens::RunFlow>,
+    mut signals: ResMut<screens::Signals>,
 ) {
+    // The world is frozen on the run screens and during transitions, and
+    // presses made there don't carry into play.
+    if !flow.0.simulating() {
+        latch.jump_pressed = false;
+        return;
+    }
     let intent = Intent {
         roll: latch.roll,
         aim: latch.aim,
@@ -262,9 +305,17 @@ fn tick(
     let game = &mut *game;
     if game.sim.dead {
         game.dead_for += DT;
-        if game.dead_for > RESTART_DELAY {
+        if game.room == Room::Stage {
+            if !game.reported {
+                game.reported = true;
+                signals.0.push(flow::Signal::Died);
+            }
+        } else if game.dead_for > RESTART_DELAY {
             *game = Game::new(game.room);
         }
+        return;
+    }
+    if game.reported {
         return;
     }
     game.previous.clone_from(&game.sim.blob.positions);
@@ -272,6 +323,15 @@ fn tick(
     game.previous_enemies
         .extend(game.sim.enemies.iter().map(|e| e.position));
     let events = game.sim.step(intent);
+    if game.room == Room::Stage {
+        signals.0.push(flow::Signal::Combo(game.sim.combo.best));
+        if game.exit.is_some_and(|exit| exit.reached(&game.sim)) {
+            game.reported = true;
+            signals.0.push(flow::Signal::Exit {
+                health: game.sim.health,
+            });
+        }
+    }
     sound.observe(&game.sim, &events);
     game.visual_events.extend_from_slice(&events);
     game.events.extend(events);

@@ -245,3 +245,29 @@ fn validation_catches_bad_chunks() {
             .any(|p| p.contains("inside a solid"))
     );
 }
+
+#[test]
+fn every_stage_file_loads_and_validates() {
+    let dir = chunk_dir("stages");
+    let mut count = 0;
+    for entry in std::fs::read_dir(&dir).unwrap() {
+        let path = entry.unwrap().path();
+        let chunk = Chunk::load(&path, &ChunkParams::default())
+            .unwrap_or_else(|e| panic!("{}: {e}", path.display()));
+        assert!(
+            chunk.sockets.len() >= 2,
+            "{}: needs an entry and an exit",
+            chunk.id
+        );
+        count += 1;
+    }
+    assert!(count > 0);
+}
+
+#[test]
+fn a_socket_region_sits_just_inside_its_opening() {
+    let chunk = corridor();
+    let (mid, half) = chunk.sockets[1].region(chunk.bounds, 1.0);
+    assert_eq!(mid, Vec2::new(9.5, 2.5));
+    assert_eq!(half, Vec2::new(0.5, 1.0));
+}

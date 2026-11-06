@@ -1,0 +1,41 @@
+// The run loop: start screen, loading, stages, transitions, run over.
+// Times are seconds.
+(
+    // The stages of a run, in order, from assets/chunks/stages/. These two
+    // are placeholders until stages are assembled from the generated chunk
+    // library (pipeline step 10).
+    stages: ["intro", "climb"],
+    // A stage ends when the blob's centre is this far (metres) inside its
+    // exit socket, the last socket of the stage chunk.
+    exit_depth: 1.0,
+    // Carry the blob's health from one stage to the next.
+    keep_health: true,
+    // Fade out after reaching a stage's exit, and back in on the next.
+    fade_out: 0.4,
+    fade_in: 0.4,
+    // The loading screen shows at least this long.
+    loading_min: 0.3,
+    // Between dying and the run-over screen.
+    death_delay: 1.0,
+    // The run-over screen ignores Jump this long, so a held button doesn't skip it.
+    run_over_min: 0.8,
+    // How dark the start and run-over screens make the world behind them.
+    dim: 0.93,
+    // Size of the title and of the other text, in logical pixels.
+    title_size: 72.0,
+    text_size: 22.0,
+    texts: (
+        title: "TARBORN",
+        start: "Jump to start",
+        seed: "Seed",
+        seed_help: "type digits to set the seed, Backspace to erase, R for a random one",
+        rooms: "F1 training room   F2 arena   F3 dressing room   F4 dark room   Esc back here",
+        loading: "Loading",
+        cleared: "Run cleared",
+        died: "Run over",
+        stages: "Stages cleared",
+        time: "Time",
+        best_combo: "Best combo",
+        again: "Jump to continue",
+    ),
+)

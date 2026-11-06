@@ -121,6 +121,8 @@ pub struct Controller {
     pub params: FeelParams,
     buffer_left: f32,
     coyote_left: f32,
+    /// Seconds since the player last rolled along a surface.
+    since_ground_roll: f32,
     last_support: Vec2,
     rising: bool,
     /// 1 for right, -1 for left.
@@ -266,6 +268,7 @@ impl Controller {
             params,
             buffer_left: 0.0,
             coyote_left: 0.0,
+            since_ground_roll: f32::INFINITY,
             last_support: Vec2::Y,
             rising: false,
             facing: 1.0,
@@ -326,6 +329,11 @@ impl Controller {
     }
 
     /// 1 for right, -1 for left.
+    /// Seconds since the player last drove the blob along a surface.
+    pub fn since_ground_roll(&self) -> f32 {
+        self.since_ground_roll
+    }
+
     pub fn facing(&self) -> f32 {
         self.facing
     }
@@ -366,6 +374,11 @@ impl Controller {
         if intent.roll.abs() > 0.1 {
             self.facing = intent.roll.signum();
         }
+        self.since_ground_roll = if touching && intent.roll.abs() > 0.1 {
+            0.0
+        } else {
+            self.since_ground_roll + dt
+        };
         if let Some(normal) = blob.support_normal(intent.modes) {
             self.coyote_left = self.params.coyote_time;
             self.last_support = normal;

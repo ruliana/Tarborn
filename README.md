@@ -106,8 +106,9 @@ strip of spikes.
 
 - Your body is the weapon. A lunge hits for a fixed amount (more from a
   charged burst), a slam hits whatever it lands on and sends out a shockwave, landing
-  on an enemy with Jump held pogoes off it, and hitting anything at high
-  speed hurts it.
+  on an enemy with Jump held pogoes off it, and being flung or bounced into
+  anything at high speed hurts it. Rolling into an enemy never does: no
+  ramming.
 - Every hit freezes the world for a moment, knocks the target back, and
   refreshes your lunge, so hits chain in the air.
 - Damage ignores sides. A thrown enemy hurts whatever it hits (and itself, if

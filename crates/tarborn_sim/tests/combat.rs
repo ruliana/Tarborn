@@ -107,6 +107,50 @@ fn rolling_gently_into_a_dummy_does_not_hurt_it() {
     assert!(hits(&events).is_empty(), "{events:?}");
 }
 
+/// Ramming is not a move: a long, flat-out roll into an enemy never hurts it,
+/// whatever mode the blob rolls in.
+#[test]
+fn rolling_flat_out_into_a_dummy_does_not_hurt_it() {
+    for modes in [TarModes::default(), BOUNCY] {
+        let mut sim = facing_dummy(25.0);
+        let mut top_speed: f32 = 0.0;
+        let mut events = Vec::new();
+        for _ in 0..ticks(6.0) {
+            events.extend(sim.step(Intent {
+                roll: 1.0,
+                modes,
+                ..Default::default()
+            }));
+            top_speed = top_speed.max(sim.blob.velocity().x);
+        }
+        assert!(
+            sim.blob.center().x > sim.enemies[0].position.x - 2.0,
+            "{modes:?}: never reached the dummy, x={}",
+            sim.blob.center().x
+        );
+        assert!(
+            hits(&events).is_empty(),
+            "{modes:?} top={top_speed}: {events:?}"
+        );
+    }
+}
+
+#[test]
+fn rolling_flat_out_rams_when_roll_impacts_are_on() {
+    let mut sim = facing_dummy(1.5);
+    sim.combat.roll_impacts = true;
+    sim.blob.set_velocity(v(14.0, 0.0));
+    let events = run(
+        &mut sim,
+        Intent {
+            roll: 1.0,
+            ..Default::default()
+        },
+        0.3,
+    );
+    assert_eq!(hits(&events), vec![HitKind::Impact], "{events:?}");
+}
+
 #[test]
 fn sliding_into_a_dummy_fast_hurts_it() {
     let mut sim = facing_dummy(1.5);

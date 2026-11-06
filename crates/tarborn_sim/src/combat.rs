@@ -11,7 +11,7 @@ use crate::enemy::{
     BRUTE_SLAM_RADIUS, EnemyKind, FEAR_DISTANCE, GUARD_SWING_OFFSET, GUARD_SWING_RADIUS,
     HitOutcome, Senses, State, line_of_sight,
 };
-use crate::{DT, Sim, TarModes};
+use crate::{DT, Sim};
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct CombatParams {
@@ -28,6 +28,12 @@ pub struct CombatParams {
     /// Damage per m/s of closing speed above `impact_speed`.
     pub impact_damage_per_speed: f32,
     pub impact_min_damage: f32,
+    /// Whether rolling along the ground into an enemy can count as an impact.
+    /// Off: ramming is not a move, only being flung or bouncing in is.
+    pub roll_impacts: bool,
+    /// How long after rolling on a surface the blob still counts as rolling,
+    /// so the little hops of a bouncy roll don't turn into rams.
+    pub roll_grace: f32,
     pub knockback: f32,
     /// Upward speed after a slam or pogo hit.
     pub pogo_speed: f32,
@@ -65,6 +71,8 @@ impl Default for CombatParams {
             impact_speed: 10.0,
             impact_damage_per_speed: 3.0,
             impact_min_damage: 8.0,
+            roll_impacts: false,
+            roll_grace: 0.4,
             knockback: 8.0,
             pogo_speed: 14.0,
             hitstop: 0.05,
@@ -87,7 +95,6 @@ impl Default for CombatParams {
 
 /// Runs after the player's move each tick: enemy physics, hits, hazards, pickups.
 pub(crate) fn resolve(sim: &mut Sim, intent: Intent, events: &mut Vec<Event>) {
-    let modes = intent.modes;
     carry(sim, intent, events);
     let slams: Vec<Vec2> = events
         .iter()
@@ -107,7 +114,7 @@ pub(crate) fn resolve(sim: &mut Sim, intent: Intent, events: &mut Vec<Event>) {
     thrown_bodies(sim, events);
     eating(sim, events);
     for i in 0..sim.enemies.len() {
-        player_hits(sim, i, modes, events);
+        player_hits(sim, i, intent, events);
     }
     for at in slams {
         shockwave(sim, at, events);
@@ -119,7 +126,14 @@ pub(crate) fn resolve(sim: &mut Sim, intent: Intent, events: &mut Vec<Event>) {
     pickups(sim, events);
 }
 
-fn player_hits(sim: &mut Sim, i: usize, modes: TarModes, events: &mut Vec<Event>) {
+/// Driving the blob along a surface (or just off it), as opposed to being
+/// flung or bounced in.
+fn rolling_on_ground(sim: &Sim, intent: Intent) -> bool {
+    intent.roll.abs() > 0.1 && sim.controller.since_ground_roll() < sim.combat.roll_grace
+}
+
+fn player_hits(sim: &mut Sim, i: usize, intent: Intent, events: &mut Vec<Event>) {
+    let modes = intent.modes;
     let p = &sim.combat;
     let enemy = &sim.enemies[i];
     if !enemy.alive() || enemy.hit_cooldown > 0.0 || enemy.held || enemy.thrown {
@@ -161,7 +175,7 @@ fn player_hits(sim: &mut Sim, i: usize, modes: TarModes, events: &mut Vec<Event>
         }
     } else if modes.bouncy && from_above && closing > 2.0 {
         HitKind::Pogo
-    } else if closing > p.impact_speed {
+    } else if closing > p.impact_speed && (p.roll_impacts || !rolling_on_ground(sim, intent)) {
         HitKind::Impact
     } else {
         return;

@@ -1,0 +1,31 @@
+// A fixed two-bar test fragment: walking bass, ride on every beat with the
+// skip note, piano on the "and" of 2 and on 4. Test data, not music.
+(
+    role: Bass,
+    layer: 1,
+    section: "A",
+    bars: 2,
+    beats_per_bar: 4,
+    notes: [
+        (start: 0.0, length: 1.0, pitch: 38, velocity: 0.9, patch: "bass"),
+        (start: 1.0, length: 1.0, pitch: 41, velocity: 0.8, patch: "bass"),
+        (start: 2.0, length: 1.0, pitch: 45, velocity: 0.85, patch: "bass"),
+        (start: 3.0, length: 1.0, pitch: 44, velocity: 0.8, patch: "bass"),
+        (start: 4.0, length: 1.0, pitch: 43, velocity: 0.9, patch: "bass"),
+        (start: 5.0, length: 1.0, pitch: 47, velocity: 0.8, patch: "bass"),
+        (start: 6.0, length: 1.0, pitch: 50, velocity: 0.85, patch: "bass"),
+        (start: 7.0, length: 1.0, pitch: 37, velocity: 0.8, patch: "bass"),
+        (start: 0.0, length: 0.5, velocity: 0.7, patch: "ride"),
+        (start: 1.0, length: 0.5, velocity: 0.8, patch: "ride"),
+        (start: 1.5, length: 0.5, velocity: 0.5, patch: "ride"),
+        (start: 2.0, length: 0.5, velocity: 0.7, patch: "ride"),
+        (start: 3.0, length: 0.5, velocity: 0.8, patch: "ride"),
+        (start: 3.5, length: 0.5, velocity: 0.5, patch: "ride"),
+        (start: 1.5, length: 0.5, pitch: 65, velocity: 0.6, patch: "piano"),
+        (start: 1.5, length: 0.5, pitch: 69, velocity: 0.6, patch: "piano"),
+        (start: 1.5, length: 0.5, pitch: 72, velocity: 0.6, patch: "piano"),
+        (start: 3.0, length: 0.5, pitch: 65, velocity: 0.55, patch: "piano"),
+        (start: 3.0, length: 0.5, pitch: 69, velocity: 0.55, patch: "piano"),
+        (start: 3.0, length: 0.5, pitch: 72, velocity: 0.55, patch: "piano"),
+    ],
+)

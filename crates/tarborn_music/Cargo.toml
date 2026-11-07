@@ -1,0 +1,12 @@
+[package]
+name = "tarborn_music"
+description = "Engine-free generative music for Tarborn: score format, offline rendering, and (later) theory, grammar, metrics, search and the live director."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+ron.workspace = true
+serde.workspace = true
+tarborn_sfx.workspace = true

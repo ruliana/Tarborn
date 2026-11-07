@@ -1,0 +1,67 @@
+// How the controls feel: timings, speeds and forgiveness windows. Re-read
+// while the game runs, so edits take effect within half a second. Times are
+// seconds, speeds metres per second, angles radians. A missing field keeps
+// its built-in value.
+(
+    // A jump pressed this long before landing still happens on landing.
+    jump_buffer: 0.12,
+    // A jump pressed this long after leaving a surface still happens.
+    coyote_time: 0.10,
+    jump_speed: 12.0,
+    // Share of upward speed kept when Jump is released early.
+    jump_cut: 0.45,
+
+    lunge_speed: 15.0,
+    // How long a lunge drives the blob, ignoring gravity, and the longest it
+    // can last closing in on a far enemy.
+    lunge_time: 0.16,
+    lunge_max_time: 0.4,
+    // Share of lunge speed kept when it ends.
+    lunge_exit_keep: 0.5,
+    lunge_cooldown: 0.3,
+    lunge_buffer: 0.12,
+    // Jump lunges at enemies this close, within this angle of a pushed stick.
+    lunge_range: 5.0,
+    lunge_aim_angle: 1.0471976, // 60 degrees
+    // Scripted dashes snap toward targets within this angle.
+    aim_assist_angle: 0.5235988, // 30 degrees
+    // Jump held this long when a lunge arrives counts as held (pogo).
+    hold_threshold: 0.1,
+
+    // Down pushed further than this makes an air Jump a slam.
+    slam_aim: 0.5,
+    slam_speed: 24.0,
+
+    // Staying shrunk this long reaches full charge; a full burst or throw is
+    // this many times as strong; the blob shrinks to this size.
+    coil_time: 0.6,
+    coil_max_power: 2.0,
+    coil_min_scale: 0.65,
+    // How long the blob takes to shrink once Grip goes down.
+    shrink_time: 0.15,
+
+    // THE DODGE. Nothing hurts the blob for dodge_time after Grip goes down.
+    dodge_time: 0.25,
+    // An attack landing up to this long BEFORE Grip goes down is still
+    // dodged: the hurt waits this long for a late press.
+    dodge_grace: 0.1,
+    // Shrinking again within this long of a dodge doesn't dodge.
+    dodge_cooldown: 0.45,
+
+    // STICKING. Grip pressed this long after bouncing off a surface pulls the
+    // blob back onto it, at this speed (plus whatever beating gravity needs).
+    grip_catch_time: 0.15,
+    grip_catch_speed: 6.0,
+    // While gripping a wall, pushing into it climbs (1 = as fast as pushing
+    // up) and pulling away goes down. 0 = only up and down move on walls.
+    wall_push_climb: 1.0,
+    // Directions keep following a wall or ceiling this long after the blob
+    // comes off it for a moment.
+    surface_memory: 0.15,
+
+    // GRABBING. Touching an enemy with Grip held grabs it from this much
+    // further than a hit reaches. In the air any touch grabs; on a surface,
+    // only within touch_grab_window of Grip going down.
+    grab_reach: 0.15,
+    touch_grab_window: 0.2,
+)

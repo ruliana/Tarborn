@@ -80,11 +80,19 @@ Two buttons, plus the stick:
 Two verbs: **Grip shrinks**, **Jump expands**.
 
 - **Grip** (hold) makes the blob small and sticky. It clings to walls and
-  ceilings (roll to crawl along them) and charges up over 0.6 s.
-- **The moment of shrinking is a dodge.** For 0.15 s while the blob goes
-  from full size to small, nothing can hurt it (it flashes white). Shrinking
-  again within 0.45 s of a dodge is instant and doesn't dodge, so time it
-  rather than tapping. Staying small doesn't protect you.
+  ceilings and charges up over 0.6 s. Gripping a surface, directions follow
+  the screen: up climbs a wall and down goes down it, pushing into a wall
+  climbs it too (pulling away goes down), and left on a ceiling goes left.
+  Pressing Grip a moment after bouncing off a surface (up to 0.15 s) still
+  sticks: the blob snaps back onto it.
+- **Pressing Grip is a dodge.** For 0.25 s after Grip goes down, nothing can
+  hurt the blob (it flashes white). It forgives a late press too: an attack
+  that lands up to 0.1 s before Grip goes down is still dodged. Shrinking
+  again within 0.45 s of a dodge doesn't dodge, so time it rather than
+  tapping. Staying small doesn't protect you.
+- **Touching an enemy with Grip held grabs it**: landing on it, bumping into
+  it in the air, or pressing Grip right beside it (within 0.2 s on a
+  surface, so a shrunk blob doesn't grab whatever walks into it).
 - **Jump** on a surface jumps instantly. Hold it to go higher.
 - **Jump while shrunk** on a surface bursts: a lunge at a nearby enemy, or,
   with none near, a launch off the surface along the aim. Both are stronger
@@ -105,6 +113,10 @@ What you hold when a lunge arrives decides how it ends:
 | nothing    | **Hit.** Full lunge damage.                                 |
 | Jump       | **Bounce off** (pogo): less damage, launches you back up.   |
 | Grip       | **Grab.** You hold the enemy; it is dizzy and helpless.     |
+
+These timings and the rest of the controls' feel are in
+[`assets/feel.ron`](crates/tarborn/assets/feel.ron), re-read while the game
+runs.
 
 While holding an enemy, **Jump throws it** along the aim (harder with more
 charge), and **releasing Grip drops it**. A guard with its shield up can't be
@@ -276,7 +288,7 @@ its head show it.
   friend or not. Be in the air when it lands, or shrink right then. It can't
   be grabbed, barely moves when hit, and shrugs off hits during its wind-up.
   It takes double damage while recovering, and a slam then knocks it prone.
-- **Shrink to dodge**: press Grip just as any attack lands (spit, a swing, a
+- **Shrink to dodge**: press Grip as any attack lands (a little late is fine) (spit, a swing, a
   pounce, a brute's slam) and it passes you by. The combo is to shrink under
   the attack, then press Jump to burst into the enemy while it recovers.
 

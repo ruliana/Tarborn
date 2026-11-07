@@ -3,6 +3,7 @@
 
 mod audio;
 mod camera;
+mod feel;
 mod flow;
 mod music;
 mod rooms;
@@ -43,6 +44,7 @@ fn main() {
         .insert_resource(ClearColor(Color::srgb(0.07, 0.06, 0.08)))
         .insert_resource(Game::new(Room::Arena))
         .insert_resource(CameraTuning::load())
+        .insert_resource(feel::FeelTuning::load())
         .insert_resource(Rig(CameraRig::at(Room::Arena.spawn())))
         .init_resource::<InputLatch>()
         .add_plugins(audio::SoundPlugin)
@@ -58,6 +60,7 @@ fn main() {
         )
         .add_systems(FixedUpdate, tick)
         .add_systems(Update, (reload_camera, follow_camera, draw).chain())
+        .add_systems(Update, feel::reload)
         .run();
 }
 
@@ -289,6 +292,7 @@ fn tick(
     mut music: ResMut<music::MusicCues>,
     flow: Res<screens::RunFlow>,
     mut signals: ResMut<screens::Signals>,
+    feel: Res<feel::FeelTuning>,
 ) {
     // The world is frozen on the run screens and during transitions, and
     // presses made there don't carry into play.
@@ -321,6 +325,7 @@ fn tick(
     if game.reported {
         return;
     }
+    game.sim.controller.params.clone_from(&feel.params);
     game.previous.clone_from(&game.sim.blob.positions);
     game.previous_enemies.clear();
     game.previous_enemies

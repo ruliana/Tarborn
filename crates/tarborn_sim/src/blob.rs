@@ -207,6 +207,18 @@ impl Blob {
             .try_normalize();
     }
 
+    /// The averaged normal of the surfaces a sticky blob is gripping: every
+    /// contact except the surface a jump just left.
+    pub fn grip_normal(&self) -> Option<Vec2> {
+        self.contacts
+            .iter()
+            .flatten()
+            .filter(|n| !self.leaving(**n))
+            .copied()
+            .sum::<Vec2>()
+            .try_normalize()
+    }
+
     /// True while `normal` belongs to the surface the blob just let go of.
     fn leaving(&self, normal: Vec2) -> bool {
         self.unstick_left > 0.0

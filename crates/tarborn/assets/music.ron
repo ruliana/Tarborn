@@ -88,4 +88,26 @@
             density: 1.0,
         ),
     ),
+
+    // The offline search that fills assets/music/library/ (MAP-Elites over
+    // the grammar's proposals). Regenerate with:
+    //   cargo run --release -p tarborn_music --bin compose
+    search: (
+        seed: 1,
+        // Tunes proposed per style; each tempo bin x form keeps its best.
+        tune_candidates: 120,
+        tempo_bins: 3,
+        // Proposals per part when judging a tune, and when filling a kept one.
+        quick_candidates: 4,
+        part_candidates: 24,
+        // Part archive: density (onsets per beat) x syncopation (LHL per bar).
+        density_bins: 4,
+        density_range: (0.0, 2.0),
+        syncopation_bins: 3,
+        syncopation_range: (0.0, 3.0),
+        // Most variants kept per part, from different cells.
+        variants: 3,
+        // Least score a proposal needs to enter.
+        min_score: 0.8,
+    ),
 )

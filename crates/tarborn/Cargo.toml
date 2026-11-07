@@ -10,7 +10,7 @@ rust-version.workspace = true
 bevy.workspace = true
 ron.workspace = true
 serde.workspace = true
-tarborn_sim.workspace = true
+tarborn_sim = { workspace = true, features = ["serde"] }
 tarborn_sfx.workspace = true
 tarborn_pcg.workspace = true
 

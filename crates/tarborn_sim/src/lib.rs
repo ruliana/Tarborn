@@ -98,6 +98,9 @@ pub struct Sim {
     hitstop_left: f32,
     /// Time left invulnerable after being hurt.
     pub(crate) hurt_left: f32,
+    /// An attack that reached the player while they could still dodge: which
+    /// way it knocks them (-1 or 1) and how long a late Grip has to dodge it.
+    pub(crate) pending_hurt: Option<(f32, f32)>,
     /// Presses that arrived during hitstop, replayed when it ends.
     pending_jump: bool,
     pending_lunge: bool,
@@ -125,6 +128,7 @@ impl Sim {
             tick: 0,
             hitstop_left: 0.0,
             hurt_left: 0.0,
+            pending_hurt: None,
             pending_jump: false,
             pending_lunge: false,
         }

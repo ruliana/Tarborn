@@ -4,8 +4,11 @@
 //!
 //! Two verbs, two buttons:
 //! - **Grip (hold) shrinks.** The blob gets small and sticky, and charges up
-//!   the longer it stays shrunk. The moment of shrinking is a dodge: nothing
-//!   can hurt the blob while it goes from full size to small.
+//!   the longer it stays shrunk. Pressing it is a dodge: nothing can hurt
+//!   the blob for a moment after, and an attack landing just before the
+//!   press is dodged too (see `combat`). Pressed just after a bounce, it
+//!   pulls the blob back onto the surface. While gripping a wall or ceiling,
+//!   directions follow the screen.
 //! - **Jump (press) expands**, the instant it is pressed:
 //!   - at normal size on a surface: a jump (hold for height);
 //!   - shrunk on a surface: a burst, a lunge at a nearby enemy or, with none
@@ -43,6 +46,8 @@ pub struct Intent {
 }
 
 #[derive(Clone, Debug, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(default))]
 pub struct FeelParams {
     /// A jump pressed this long before landing still happens on landing.
     pub jump_buffer: f32,
@@ -70,8 +75,13 @@ pub struct FeelParams {
     /// How small the blob gets at full charge. It drops most of the way there
     /// as soon as Grip goes down.
     pub coil_min_scale: f32,
-    /// How long shrinking takes. The blob can't be hurt meanwhile: the dodge.
+    /// How long the blob takes to shrink, once Grip goes down.
+    pub shrink_time: f32,
+    /// How long the blob can't be hurt after Grip goes down: the dodge.
     pub dodge_time: f32,
+    /// An attack that lands this long before Grip goes down is still dodged:
+    /// the hurt waits this long for a late press.
+    pub dodge_grace: f32,
     /// After a dodge, shrinking again within this long is instant and doesn't
     /// dodge, so tapping Grip can't chain dodges forever.
     pub dodge_cooldown: f32,
@@ -86,6 +96,23 @@ pub struct FeelParams {
     pub hold_threshold: f32,
     /// A forced (scripted) dash snaps toward targets within this angle.
     pub aim_assist_angle: f32,
+    /// Grip pressed this long after a bounce undoes it: the blob is pulled
+    /// back onto the surface it bounced off, and sticks.
+    pub grip_catch_time: f32,
+    /// Speed toward the surface when a late Grip catches a bounce.
+    pub grip_catch_speed: f32,
+    /// Touching an enemy with Grip held grabs it, from this much further
+    /// than a hit reaches.
+    pub grab_reach: f32,
+    /// On a surface, touching an enemy grabs it only this long after Grip
+    /// goes down. In the air, any touch with Grip held grabs.
+    pub touch_grab_window: f32,
+    /// Gripping a wall, pushing into it climbs it at this share of pushing
+    /// up (and pulling away goes down). 0 reads only the stick's up and down.
+    pub wall_push_climb: f32,
+    /// Directions keep following a wall or ceiling this long after the blob
+    /// comes off it, so climbing doesn't drop when rolling lifts it a moment.
+    pub surface_memory: f32,
 }
 
 impl Default for FeelParams {
@@ -105,13 +132,21 @@ impl Default for FeelParams {
             coil_time: 0.6,
             coil_max_power: 2.0,
             coil_min_scale: 0.65,
-            dodge_time: 0.15,
+            shrink_time: 0.15,
+            dodge_time: 0.25,
+            dodge_grace: 0.1,
             dodge_cooldown: 0.45,
             lunge_range: 5.0,
             lunge_aim_angle: 60f32.to_radians(),
             lunge_max_time: 0.4,
             hold_threshold: 0.1,
             aim_assist_angle: 30f32.to_radians(),
+            grip_catch_time: 0.15,
+            grip_catch_speed: 6.0,
+            grab_reach: 0.15,
+            touch_grab_window: 0.2,
+            wall_push_climb: 1.0,
+            surface_memory: 0.15,
         }
     }
 }
@@ -135,12 +170,19 @@ pub struct Controller {
     slamming: bool,
     /// Seconds shrunk, while Grip is held.
     shrunk: Option<f32>,
+    /// Time left shrinking.
+    shrink_left: f32,
     /// Time left in the shrinking dodge.
     dodge_left: f32,
     /// Time before shrinking dodges again.
     dodge_ready_in: f32,
     /// Seconds Jump has been held without a break.
     jump_hold: f32,
+    /// The surface last gripped, and how much longer it is remembered after
+    /// the blob comes off it for a moment (rolling peels it off a wall).
+    gripped: Option<(Vec2, f32)>,
+    /// The last bounce: the surface's normal, where the blob was, and seconds since.
+    last_bounce: Option<(Vec2, Vec2, f32)>,
 }
 
 impl Default for Controller {
@@ -278,9 +320,12 @@ impl Controller {
             lunge_power: 0.0,
             slamming: false,
             shrunk: None,
+            shrink_left: 0.0,
             dodge_left: 0.0,
             dodge_ready_in: 0.0,
             jump_hold: 0.0,
+            last_bounce: None,
+            gripped: None,
         }
     }
 
@@ -291,6 +336,11 @@ impl Controller {
     /// Grip is held: the blob is small and sticky.
     pub fn is_shrunk(&self) -> bool {
         self.shrunk.is_some()
+    }
+
+    /// Seconds since Grip went down, or infinity when it is up.
+    pub fn shrunk_for(&self) -> f32 {
+        self.shrunk.unwrap_or(f32::INFINITY)
     }
 
     /// 0 just after shrinking, 1 after a full charge.
@@ -318,6 +368,11 @@ impl Controller {
     /// The blob is mid-shrink: nothing can hurt it.
     pub fn is_dodging(&self) -> bool {
         self.dodge_left > 0.0
+    }
+
+    /// Pressing Grip now would dodge: not already shrunk, and not on cooldown.
+    pub fn can_dodge(&self) -> bool {
+        self.shrunk.is_none() && self.dodge_ready_in <= 0.0
     }
 
     /// Lunges, slams and the shrinking dodge can't be hurt.
@@ -380,21 +435,32 @@ impl Controller {
         };
 
         // Grip shrinks. Going from full size to small is the dodge, when ready.
+        self.shrink_left = (self.shrink_left - dt).max(0.0);
         self.dodge_left = (self.dodge_left - dt).max(0.0);
         self.dodge_ready_in = (self.dodge_ready_in - dt).max(0.0);
+        if let Some((_, _, age)) = &mut self.last_bounce {
+            *age += dt;
+        }
         if intent.modes.sticky {
             if self.shrunk.is_none() {
                 events.push(Event::Shrank);
+                self.shrink_left = self.params.shrink_time;
                 if self.dodge_ready_in <= 0.0 {
                     self.dodge_left = self.params.dodge_time;
                     self.dodge_ready_in = self.params.dodge_cooldown;
                 }
+                self.catch_bounce(blob);
             }
             self.shrunk = Some(self.shrunk.unwrap_or(0.0) + dt);
             let size = 0.4 + 0.6 * self.charge();
-            let progress = 1.0 - self.dodge_left / self.params.dodge_time;
+            let progress = if self.params.shrink_time > 0.0 {
+                1.0 - self.shrink_left / self.params.shrink_time
+            } else {
+                1.0
+            };
             blob.scale = 1.0 + (self.params.coil_min_scale - 1.0) * size * progress;
         } else if self.shrunk.take().is_some() {
+            self.shrink_left = 0.0;
             self.dodge_left = 0.0;
             blob.scale = 1.0;
         }
@@ -448,7 +514,8 @@ impl Controller {
         }
 
         let impact = blob.velocity();
-        let bounce = blob.step(level, dt, intent.roll, intent.modes);
+        let roll = self.surface_roll(blob, intent, dt);
+        let bounce = blob.step(level, dt, roll, intent.modes);
 
         if self.slamming && blob.touching_count() > 0 {
             self.slamming = false;
@@ -458,6 +525,7 @@ impl Controller {
             });
         }
         if let Some(normal) = bounce {
+            self.last_bounce = Some((normal, blob.center(), 0.0));
             events.push(Event::Bounced { normal });
         }
 
@@ -476,6 +544,58 @@ impl Controller {
         events
     }
 
+    /// The roll that moves the blob the way the stick points, on screen. On
+    /// the floor that is just left and right. Gripping a wall or a ceiling,
+    /// rolling one way can move the blob up, down or backwards, so the stick
+    /// is read along the surface: up climbs a wall, and pushing into a wall
+    /// climbs it too (pulling away goes down it). On a ceiling, left is left.
+    fn surface_roll(&mut self, blob: &Blob, intent: Intent, dt: f32) -> f32 {
+        if !intent.modes.sticky || self.is_lunging() || self.slamming {
+            self.gripped = None;
+            return intent.roll;
+        }
+        self.gripped = match blob.support_normal(intent.modes) {
+            Some(normal) => Some((normal, self.params.surface_memory)),
+            None => self
+                .gripped
+                .map(|(normal, left)| (normal, left - dt))
+                .filter(|(_, left)| *left > 0.0),
+        };
+        let Some((normal, _)) = self.gripped else {
+            return intent.roll;
+        };
+        let stick = if intent.aim.length() > 0.1 {
+            intent.aim
+        } else {
+            Vec2::new(intent.roll, 0.0)
+        };
+        // Where a clockwise roll (roll = 1) carries the blob along this surface.
+        let travel = Vec2::new(normal.y, -normal.x);
+        let along = stick.dot(travel);
+        let into = stick.dot(-normal) * travel.y * self.params.wall_push_climb;
+        (along + into).clamp(-1.0, 1.0)
+    }
+
+    /// Grip pressed just after a bounce: the player meant to stick, and was a
+    /// moment late. Send the blob back to the surface it bounced off.
+    fn catch_bounce(&mut self, blob: &mut Blob) {
+        let Some((normal, at, age)) = self.last_bounce.take() else {
+            return;
+        };
+        if age > self.params.grip_catch_time || self.is_lunging() || self.slamming {
+            return;
+        }
+        // Fast enough to get back against gravity pulling off the surface.
+        let away = (blob.center() - at).dot(normal).max(0.0);
+        let pull_off = (blob.params.gravity * blob.gravity_scale)
+            .dot(normal)
+            .max(0.0);
+        let speed = self.params.grip_catch_speed + (2.0 * pull_off * away).sqrt();
+        let v = blob.velocity();
+        let along = v - normal * v.dot(normal);
+        blob.set_velocity(along - normal * speed);
+    }
+
     fn jump(&mut self, blob: &mut Blob, events: &mut Vec<Event>) {
         // Jump away from the surface, biased upward so wall jumps arc.
         let direction = (self.last_support + Vec2::Y).normalize_or(Vec2::Y);
@@ -488,6 +608,7 @@ impl Controller {
             v.y = v.y.max(0.0);
         }
         blob.launch(direction * self.params.jump_speed);
+        self.gripped = None;
         self.buffer_left = 0.0;
         self.coyote_left = 0.0;
         self.rising = true;
@@ -499,6 +620,7 @@ impl Controller {
     fn burst(&mut self, blob: &mut Blob, aim: Vec2, targets: &[Vec2], events: &mut Vec<Event>) {
         let power = self.charge();
         self.spend_charge();
+        self.gripped = None;
         self.buffer_left = 0.0;
         self.coyote_left = 0.0;
         self.rising = false;

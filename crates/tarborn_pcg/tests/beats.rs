@@ -92,11 +92,11 @@ fn sticking_to_a_wall_then_dropping_off_its_top() {
 
 #[test]
 fn sticking_to_the_ceiling() {
-    // Climb the pillar, then burst up and right from it to the ceiling,
-    // keeping Grip held.
+    // Climb the pillar, hold still on it, then burst up and right from it to
+    // the ceiling, keeping Grip held.
     let aim = b(Vec2::new(0.5, 1.0)).with_grip();
     let tape = climb_the_pillar()
-        .at(200, b(Vec2::Y).with_grip())
+        .at(200, Buttons::NONE.with_grip())
         .at(280, aim.with_jump())
         .at(288, aim);
     let run = run(&tape, 500);

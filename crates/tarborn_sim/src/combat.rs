@@ -90,6 +90,7 @@ impl Default for CombatParams {
 /// Runs after the player's move each tick: enemy physics, hits, hazards, pickups.
 pub(crate) fn resolve(sim: &mut Sim, intent: Intent, events: &mut Vec<Event>) {
     let modes = intent.modes;
+    late_dodge(sim, events);
     carry(sim, intent, events);
     let slams: Vec<Vec2> = events
         .iter()
@@ -128,12 +129,22 @@ fn player_hits(sim: &mut Sim, i: usize, modes: TarModes, events: &mut Vec<Event>
         return;
     }
     let reach = enemy.radius + sim.blob.params.point_radius + p.hit_reach;
-    let touching = sim
+    let closest = sim
         .blob
         .positions
         .iter()
-        .any(|q| q.distance(enemy.position) < reach);
-    if !touching {
+        .map(|q| q.distance(enemy.position))
+        .fold(f32::INFINITY, f32::min);
+    // Grip held reaches a little further: grabbing should be easy.
+    let gripping = modes.sticky && sim.held.is_none() && !sim.controller.is_slamming();
+    // A touch grabs when in the air, or when Grip has only just gone down.
+    // Staying small on the ground doesn't grab whatever walks into you.
+    let airborne = sim.blob.touching_count() == 0;
+    let touch_grab = gripping
+        && (airborne || sim.controller.shrunk_for() <= sim.controller.params.touch_grab_window);
+    let can_grab = touch_grab || (gripping && sim.controller.is_lunging());
+    let grab_reach = reach + sim.controller.params.grab_reach;
+    if closest >= reach && !(can_grab && closest < grab_reach) {
         return;
     }
     let center = sim.blob.center();
@@ -153,14 +164,28 @@ fn player_hits(sim: &mut Sim, i: usize, modes: TarModes, events: &mut Vec<Event>
         return;
     } else if sim.controller.is_lunging() {
         // What the player holds when the lunge arrives decides what it does.
-        if modes.sticky && sim.held.is_none() && enemy.grabbable(direction) {
+        if gripping && enemy.grabbable(direction) {
             grab(sim, i, events);
+            return;
+        } else if closest >= reach {
             return;
         } else if sim.controller.jump_is_held() && !modes.sticky {
             HitKind::Pogo
         } else {
             HitKind::Lunge
         }
+    } else if touch_grab && enemy.grabbable(direction) {
+        // Touching an enemy with Grip held grabs it, landing on it or not.
+        if enemy.can_evade() {
+            let at = enemy.position;
+            sim.enemies[i].evade(center);
+            events.push(Event::Evaded { enemy: i, at });
+        } else {
+            grab(sim, i, events);
+        }
+        return;
+    } else if closest >= reach {
+        return;
     } else if modes.bouncy && from_above && closing > 2.0 {
         HitKind::Pogo
     } else if closing > p.impact_speed {
@@ -528,6 +553,9 @@ fn hazards(sim: &mut Sim, events: &mut Vec<Event>) {
 
 /// An attack reaches the player: a shrinking blob dodges it, anything else
 /// that isn't invulnerable gets hurt. Returns true if the attack is spent.
+///
+/// A player who could still dodge gets a moment of grace: the hurt waits
+/// `dodge_grace` seconds, and a Grip press meanwhile dodges it after all.
 fn dodge_or_hurt(sim: &mut Sim, away: f32, events: &mut Vec<Event>) -> bool {
     if sim.controller.is_dodging() {
         events.push(Event::Dodged {
@@ -536,9 +564,34 @@ fn dodge_or_hurt(sim: &mut Sim, away: f32, events: &mut Vec<Event>) -> bool {
         true
     } else if sim.player_invulnerable() {
         false
+    } else if sim.pending_hurt.is_some() {
+        // Already waiting on a late dodge; this attack shares its fate.
+        true
+    } else if sim.controller.can_dodge() && sim.controller.params.dodge_grace > 0.0 {
+        sim.pending_hurt = Some((away, sim.controller.params.dodge_grace));
+        true
     } else {
         hurt_player(sim, away, events);
         true
+    }
+}
+
+/// An attack that landed a moment ago: dodged if Grip went down since,
+/// otherwise it hurts once the grace runs out.
+fn late_dodge(sim: &mut Sim, events: &mut Vec<Event>) {
+    let Some((away, left)) = sim.pending_hurt else {
+        return;
+    };
+    if sim.controller.is_dodging() {
+        sim.pending_hurt = None;
+        events.push(Event::Dodged {
+            at: sim.blob.center(),
+        });
+    } else if left <= DT || !sim.controller.can_dodge() {
+        sim.pending_hurt = None;
+        hurt_player(sim, away, events);
+    } else {
+        sim.pending_hurt = Some((away, left - DT));
     }
 }
 
@@ -653,7 +706,7 @@ fn move_projectiles(sim: &mut Sim, events: &mut Vec<Event>) {
         } else if touching && !sim.player_invulnerable() && !sim.projectiles[i].dodged {
             let away = sim.projectiles[i].velocity.x.signum();
             sim.projectiles.remove(i);
-            hurt_player(sim, away, events);
+            dodge_or_hurt(sim, away, events);
             continue;
         }
         i += 1;

@@ -57,6 +57,9 @@ pub struct BlobParams {
     pub grip_inv_mass: f32,
     /// How long grip is released after a jump, so sticky jumps can leave.
     pub unstick_time: f32,
+    /// Contact normals this close (as a dot product) to the surface a jump
+    /// left count as that surface, and don't grip until `unstick_time` ends.
+    pub unstick_same_surface: f32,
     /// Fraction of velocity removed per second, everywhere.
     pub linear_damping: f32,
     pub max_point_speed: f32,
@@ -85,6 +88,7 @@ impl Default for BlobParams {
             grip_pull: 0.1,
             grip_inv_mass: 1.0,
             unstick_time: 0.15,
+            unstick_same_surface: 0.5,
             linear_damping: 0.3,
             max_point_speed: 32.0,
         }
@@ -109,6 +113,9 @@ pub struct Blob {
     inv_mass: Vec<f32>,
     held: Vec<Option<Vec2>>,
     unstick_left: f32,
+    /// The surface being left by the last unstick. Only it lets go; any other
+    /// surface reached during the unstick time grips right away.
+    unstick_from: Option<Vec2>,
 }
 
 /// Contact points further behind the centre than this share of the radius,
@@ -140,6 +147,7 @@ impl Blob {
             inv_mass: vec![1.0; n],
             held: vec![None; n],
             unstick_left: 0.0,
+            unstick_from: None,
             params,
         }
     }
@@ -177,17 +185,34 @@ impl Blob {
         sum.try_normalize()
     }
 
-    /// Adds `velocity` to every point and briefly releases any grip, e.g. for a jump.
+    /// Adds `velocity` to every point and briefly releases the grip on the
+    /// surfaces it is touching, e.g. for a jump.
     pub fn launch(&mut self, velocity: Vec2) {
         for v in &mut self.velocities {
             *v += velocity;
         }
-        self.unstick_left = self.params.unstick_time;
+        self.unstick();
     }
 
-    /// Briefly releases any grip without changing velocity.
+    /// Briefly releases the grip on the surfaces the blob is touching, without
+    /// changing velocity. A wall or ceiling met meanwhile still grips.
     pub fn unstick(&mut self) {
         self.unstick_left = self.params.unstick_time;
+        self.unstick_from = self
+            .contacts
+            .iter()
+            .flatten()
+            .copied()
+            .sum::<Vec2>()
+            .try_normalize();
+    }
+
+    /// True while `normal` belongs to the surface the blob just let go of.
+    fn leaving(&self, normal: Vec2) -> bool {
+        self.unstick_left > 0.0
+            && self
+                .unstick_from
+                .is_some_and(|from| normal.dot(from) > self.params.unstick_same_surface)
     }
 
     /// Replaces the blob's overall velocity with `velocity`, keeping its spin
@@ -221,12 +246,16 @@ impl Blob {
         let center = self.center();
         let damping = (1.0 - p.linear_damping * dt).max(0.0);
         self.unstick_left = (self.unstick_left - dt).max(0.0);
-        let gripping = modes.sticky && self.unstick_left <= 0.0;
+        let gripping = modes.sticky;
 
         // Points gripping a surface are "heavier" for the solver, so the rest of
         // the body hangs from them instead of dragging them along.
         for i in 0..n {
-            self.held[i] = if gripping { self.contacts[i] } else { None };
+            self.held[i] = if gripping {
+                self.contacts[i].filter(|normal| !self.leaving(*normal))
+            } else {
+                None
+            };
             // Rolling into a corner: let go of the surface being rolled off,
             // so the blob transfers onto the one ahead instead of wedging.
             if let Some(normal) = self.held[i]

@@ -7,9 +7,10 @@
 //! `lookahead` seconds at the matching stream sample. The stream itself only
 //! mixes; it never decides timing, so a dropped buffer can't touch gameplay.
 //!
-//! For now the stream plays a debug click track (off by default, `click`
-//! in `assets/music.ron`) and logs the measured output latency. The live
-//! director (step 8) feeds it the band.
+//! The live director (`tarborn_music::director`) decides each bar ahead of
+//! time; its notes are voiced and scheduled like everything else. A debug
+//! click track (off by default, `click` in `assets/music.ron`) can play on
+//! top, and the measured output latency is logged.
 //!
 //! Every number lives in `assets/music.ron`, reloaded when it changes.
 
@@ -20,13 +21,36 @@ use std::path::PathBuf;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant, SystemTime};
+use tarborn_music::director::{Director, Input, Voicer};
+use tarborn_music::search::LibraryTune;
 use tarborn_music::stream::{AudioSync, LatencyMeter, Mixer, Scheduled, StreamParams};
-use tarborn_music::{MusicFile, from_ron};
+use tarborn_music::style::Style;
+use tarborn_music::{MusicFile, PatchBank, from_ron};
 use tarborn_sfx::soft_limit;
 use tarborn_sim::{BeatClock, Sim, TICKS_PER_SECOND};
 
 /// The music file built into the game, used when the file on disk is missing.
 const BUILT_IN: &str = include_str!("../assets/music.ron");
+/// The same for the band's data, by path under `assets/music/`.
+const BUILT_IN_DATA: [(&str, &str); 5] = [
+    ("patches.ron", include_str!("../assets/music/patches.ron")),
+    (
+        "styles/industrial.ron",
+        include_str!("../assets/music/styles/industrial.ron"),
+    ),
+    (
+        "styles/forest.ron",
+        include_str!("../assets/music/styles/forest.ron"),
+    ),
+    (
+        "library/industrial.ron",
+        include_str!("../assets/music/library/industrial.ron"),
+    ),
+    (
+        "library/forest.ron",
+        include_str!("../assets/music/library/forest.ron"),
+    ),
+];
 
 /// Samples between two looks at the inbox from the audio thread.
 const INBOX_EVERY: u64 = 64;
@@ -51,6 +75,11 @@ pub struct MusicCues {
     restarted: bool,
     /// Tempo and meter the music wants the clock at.
     tempo: Option<(f32, u32)>,
+    /// How intense the moment is, 0 calm .. 1 full fight. Set by the game
+    /// (step 9); calm until then.
+    pub intensity: f32,
+    /// How much the player is drumming, 0 .. 1, so the band ducks (step 10).
+    pub duck: f32,
 }
 
 impl MusicCues {
@@ -221,6 +250,7 @@ struct Music {
     next_beat: Option<i64>,
     downbeat: Arc<[f32]>,
     beat: Arc<[f32]>,
+    band: Option<Band>,
     meter: LatencyMeter,
     /// Latency measured over the last log window, in seconds.
     latency: f32,
@@ -232,6 +262,58 @@ fn music_file() -> PathBuf {
     std::env::var_os("TARBORN_MUSIC")
         .map(PathBuf::from)
         .unwrap_or_else(|| PathBuf::from(concat!(env!("CARGO_MANIFEST_DIR"), "/assets/music.ron")))
+}
+
+/// The director and what voices its notes.
+struct Band {
+    director: Director,
+    voicer: Voicer,
+    /// Next bar to decide.
+    next_bar: Option<i64>,
+}
+
+/// Reads a band data file from `assets/music/`, or the built-in copy.
+fn music_data<T: serde::de::DeserializeOwned>(name: &str) -> Result<T, String> {
+    let dir = music_file().with_file_name("music");
+    let path = dir.join(name);
+    if let Ok(text) = std::fs::read_to_string(&path) {
+        match from_ron(&text) {
+            Ok(value) => return Ok(value),
+            Err(e) => warn!("{}: {e}; using the built-in copy", path.display()),
+        }
+    }
+    let (_, text) = BUILT_IN_DATA
+        .iter()
+        .find(|(n, _)| *n == name)
+        .ok_or_else(|| format!("no music data named {name}"))?;
+    from_ron(text).map_err(|e| format!("built-in {name}: {e}"))
+}
+
+fn run_seed() -> u32 {
+    SystemTime::now()
+        .duration_since(SystemTime::UNIX_EPOCH)
+        .map_or(1, |d| d.subsec_nanos() ^ d.as_secs() as u32)
+}
+
+impl Band {
+    fn new(file: &MusicFile) -> Result<Self, String> {
+        let name = &file.director.style;
+        let style: Style = music_data(&format!("styles/{name}.ron"))?;
+        let library: Vec<LibraryTune> = music_data(&format!("library/{name}.ron"))?;
+        let bank: PatchBank = music_data("patches.ron")?;
+        let seed = run_seed();
+        let director = Director::new(style, library, file.director.clone(), seed)
+            .ok_or_else(|| format!("the {name} music library is empty"))?;
+        info!(
+            "music: {name} at {:.0} BPM, run seed {seed}",
+            director.bpm()
+        );
+        Ok(Self {
+            director,
+            voicer: Voicer::new(bank, file.render.clone(), seed),
+            next_bar: None,
+        })
+    }
 }
 
 fn modified(path: &PathBuf) -> Option<SystemTime> {
@@ -246,7 +328,24 @@ impl Music {
         if let Ok(mut settings) = self.shared.settings.lock() {
             *settings = StreamSettings::from(&file.stream);
         }
-        cues.tempo = Some((file.click.bpm, file.click.beats_per_bar));
+        // A new director only when its own settings change, so a tweak to
+        // the mix doesn't restart the tune.
+        let mut render = file.render.clone();
+        render.sample_rate = rate;
+        match &mut self.band {
+            Some(band) if file.director == self.file.director => band.voicer.set_settings(render),
+            _ => {
+                let mut file = file.clone();
+                file.render = render;
+                self.band = Band::new(&file)
+                    .inspect_err(|e| warn!("music: {e}; playing no band"))
+                    .ok();
+            }
+        }
+        cues.tempo = Some(match &self.band {
+            Some(band) => (band.director.bpm(), band.director.beats_per_bar()),
+            None => (file.click.bpm, file.click.beats_per_bar),
+        });
         self.file = file;
     }
 }
@@ -286,6 +385,7 @@ fn start_music(
         next_beat: None,
         downbeat: Arc::from(Vec::new()),
         beat: Arc::from(Vec::new()),
+        band: None,
         meter: LatencyMeter::default(),
         latency: 0.0,
         since_log: 0.0,
@@ -361,16 +461,14 @@ fn schedule_music(
     if std::mem::take(&mut cues.restarted) {
         music.sync.reset();
         music.next_beat = None;
+        if let Some(band) = &mut music.band {
+            band.next_bar = None;
+        }
     }
     let taken = music.shared.taken.load(Ordering::Relaxed);
     let now = cues.tick as f64 + fixed.overstep_fraction() as f64;
     music.sync.observe(now, taken, &p);
 
-    // The click track.
-    if !music.file.click.enabled || music.muted {
-        music.next_beat = None;
-        return;
-    }
     let clock = cues.clock;
     let compensation = p.latency_compensation
         + if p.auto_compensate {
@@ -379,10 +477,58 @@ fn schedule_music(
             0.0
         };
     let horizon = now + p.lookahead as f64 * TICKS_PER_SECOND as f64;
+    let mut notes = Vec::new();
+
+    // The band, a bar at a time.
+    if let Some(band) = &mut music.band {
+        if music.muted {
+            band.next_bar = None;
+        } else {
+            let bpb = clock.beats_per_bar().max(1) as i64;
+            // Start (or resume) on the next bar line, never in the past.
+            let first_due = (clock.beats_at(now) / bpb as f64).floor() as i64 + 1;
+            let mut bar = band.next_bar.map_or(first_due, |b| b.max(first_due));
+            while clock.tick_of_beat((bar * bpb) as f64) <= horizon
+                && music.sync.sample_for_tick(now, compensation).is_some()
+            {
+                let plan = band.director.next_bar(Input {
+                    intensity: cues.intensity,
+                    duck: cues.duck,
+                });
+                let (bpm, swing) = (band.director.bpm(), band.director.swing());
+                for note in &plan.notes {
+                    let Some(voice) = band.voicer.voice(note, (bar * bpb) as f64, bpm, swing)
+                    else {
+                        continue;
+                    };
+                    let tick = clock.tick_of_beat(voice.beat);
+                    if let Some(at) = music.sync.sample_for_tick(tick, compensation) {
+                        notes.push(Scheduled {
+                            at,
+                            samples: voice.samples,
+                            gain: voice.gain,
+                        });
+                    }
+                }
+                bar += 1;
+            }
+            band.next_bar = Some(bar);
+        }
+    }
+
+    // The click track.
+    if !music.file.click.enabled || music.muted {
+        music.next_beat = None;
+        if !notes.is_empty()
+            && let Ok(mut inbox) = music.shared.inbox.lock()
+        {
+            inbox.extend(notes);
+        }
+        return;
+    }
     // Start (or resume after a pause) on the next beat, never in the past.
     let first_due = clock.beats_at(now).floor() as i64 + 1;
     let mut beat = music.next_beat.map_or(first_due, |b| b.max(first_due));
-    let mut notes = Vec::new();
     while clock.tick_of_beat(beat as f64) <= horizon {
         let tick = clock.tick_of_beat(beat as f64);
         let Some(at) = music.sync.sample_for_tick(tick, compensation) else {
@@ -418,6 +564,21 @@ mod tests {
         assert!(file.click.bpm > 0.0);
         assert!(file.stream.lookahead > 0.0);
         assert!(!file.click.downbeat.layers.is_empty());
+    }
+
+    #[test]
+    fn the_built_in_band_starts() {
+        let file: MusicFile = from_ron(BUILT_IN).expect("music.ron parses");
+        let band = Band::new(&file).expect("the band starts");
+        assert!(band.director.bpm() > 0.0);
+        for (name, _) in BUILT_IN_DATA {
+            if name.starts_with("styles/") {
+                let style = name.trim_start_matches("styles/").trim_end_matches(".ron");
+                let mut f = file.clone();
+                f.director.style = style.into();
+                Band::new(&f).unwrap_or_else(|e| panic!("{style}: {e}"));
+            }
+        }
     }
 
     #[test]

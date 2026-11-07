@@ -14,6 +14,7 @@
 //! and seed always produce the same samples.
 
 pub mod analysis;
+pub mod director;
 pub mod grammar;
 pub mod metrics;
 pub mod patches;
@@ -46,6 +47,8 @@ pub struct MusicFile {
     pub metrics: metrics::MetricParams,
     /// The offline search that fills the library.
     pub search: search::SearchParams,
+    /// The live director.
+    pub director: director::DirectorParams,
 }
 
 /// A metronome on the sim's beat clock, to check that the stream keeps time.

@@ -168,36 +168,4 @@
         rise: 0.3,
         fall: 4.0,
     ),
-
-    // How tense the moment is: the director's intensity, from the game.
-    mood: (
-        // Weight of each state of an on-screen enemy; unaware weighs 0.
-        states: {
-            "searching": 0.35,
-            "surprised": 0.5,
-            "fleeing": 0.5,
-            "chasing": 0.6,
-            "defending": 0.6,
-            "dizzy": 0.8,
-            "prone": 0.8,
-            "dodging": 0.8,
-            "recover": 0.85,
-            "windup": 0.9,
-            "strike": 1.0,
-        },
-        // Added per engaged enemy past the first, up to crowd_max.
-        crowd: 0.1,
-        crowd_max: 0.3,
-        // Intensity kept while a combo runs.
-        combo_floor: 0.75,
-        // Danger: health_weight * (1 - health) + windup_weight per windup.
-        health_weight: 0.6,
-        windup_weight: 0.3,
-        // Share of the danger added to the intensity.
-        danger_mix: 0.3,
-        // Seconds to rise, and to fall (falls are slow so a fight's end
-        // lingers; the director also waits fall_bars before dropping).
-        rise: 0.3,
-        fall: 4.0,
-    ),
 )

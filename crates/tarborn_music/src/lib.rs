@@ -18,6 +18,7 @@ pub mod patches;
 pub mod render;
 pub mod score;
 pub mod stream;
+pub mod theory;
 pub mod time;
 
 pub use render::{Patch, PatchBank, RenderSettings, render};

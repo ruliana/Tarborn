@@ -62,4 +62,30 @@
         downbeat: (layers: [(wave: Sine, freq: 1760.0, decay: 0.05, decay_curve: 2.0)]),
         beat: (layers: [(wave: Sine, freq: 880.0, decay: 0.04, decay_curve: 2.0, gain: 0.7)]),
     ),
+
+    // Quality metrics (tarborn_music::metrics): how each measure is computed
+    // and how much it weighs. Per-style targets live in the style files.
+    // Statistics: cargo run --release -p tarborn_music --bin report
+    metrics: (
+        // Roughness of each interval class from unison to major seventh.
+        dissonance: (0.0, 1.0, 0.45, 0.15, 0.1, 0.05, 0.6, 0.0, 0.1, 0.1, 0.35, 0.8),
+        // Spiral array: rise per fifth (Chew's sqrt(2/15)); radius is 1.
+        spiral_rise: 0.365,
+        // Beats per tension window, and the mix of cloud diameter, tensile
+        // strain and momentum.
+        window: 1.0,
+        tension_mix: (1.0, 1.0, 0.5),
+        // Notes per n-gram when measuring repetition.
+        ngram: 3,
+        // Range widths outside a target at which a measure scores 0.
+        softness: 1.0,
+        weights: (
+            tension: 1.0,
+            dissonance: 1.0,
+            voice_leading: 1.0,
+            syncopation: 0.5,
+            repetition: 1.0,
+            density: 1.0,
+        ),
+    ),
 )

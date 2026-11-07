@@ -22,12 +22,13 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant, SystemTime};
 use tarborn_music::director::{Director, Input, Voicer};
+use tarborn_music::mood::{Mood, MoodParams, Scene};
 use tarborn_music::search::LibraryTune;
 use tarborn_music::stream::{AudioSync, LatencyMeter, Mixer, Scheduled, StreamParams};
 use tarborn_music::style::Style;
 use tarborn_music::{MusicFile, PatchBank, from_ron};
 use tarborn_sfx::soft_limit;
-use tarborn_sim::{BeatClock, Sim, TICKS_PER_SECOND};
+use tarborn_sim::{AttackPhase, BeatClock, DT, Sim, State, TICKS_PER_SECOND};
 
 /// The music file built into the game, used when the file on disk is missing.
 const BUILT_IN: &str = include_str!("../assets/music.ron");
@@ -62,7 +63,10 @@ impl Plugin for MusicPlugin {
         app.add_audio_source::<MusicStream>()
             .init_resource::<MusicCues>()
             .add_systems(Startup, start_music)
-            .add_systems(Update, (reload_music, toggle_mute, schedule_music).chain());
+            .add_systems(
+                Update,
+                (reload_music, follow_stage, toggle_mute, schedule_music).chain(),
+            );
     }
 }
 
@@ -75,11 +79,54 @@ pub struct MusicCues {
     restarted: bool,
     /// Tempo and meter the music wants the clock at.
     tempo: Option<(f32, u32)>,
-    /// How intense the moment is, 0 calm .. 1 full fight. Set by the game
-    /// (step 9); calm until then.
-    pub intensity: f32,
+    /// How tense the moment is, followed tick by tick from the sim.
+    pub mood: Mood,
+    mood_params: MoodParams,
     /// How much the player is drumming, 0 .. 1, so the band ducks (step 10).
     pub duck: f32,
+}
+
+/// The name a state goes by in `music.ron`'s `mood.states`.
+pub fn state_name(state: State) -> &'static str {
+    match state {
+        State::Unaware => "unaware",
+        State::Surprised => "surprised",
+        State::Searching => "searching",
+        State::Chasing => "chasing",
+        State::Defending => "defending",
+        State::Attacking(AttackPhase::Windup) => "windup",
+        State::Attacking(AttackPhase::Strike) => "strike",
+        State::Attacking(AttackPhase::Recover) => "recover",
+        State::Dizzy => "dizzy",
+        State::Prone => "prone",
+        State::Fleeing => "fleeing",
+        State::Dodging => "dodging",
+    }
+}
+
+/// What the music sees of the sim: living enemies on screen, health, combo.
+pub fn scene(sim: &Sim) -> Scene {
+    let player = sim.blob.center();
+    let on_screen = |p: Vec2| {
+        let d = (p - player).abs();
+        d.x <= sim.view.x && d.y <= sim.view.y
+    };
+    let near: Vec<State> = sim
+        .enemies
+        .iter()
+        .filter(|e| e.alive() && on_screen(e.position))
+        .map(|e| e.state)
+        .collect();
+    Scene {
+        windups: near
+            .iter()
+            .filter(|s| **s == State::Attacking(AttackPhase::Windup))
+            .count() as u32,
+        enemies: near.into_iter().map(state_name).collect(),
+        health: sim.health as f32 / sim.max_health.max(1) as f32,
+        combo: sim.combo.count,
+        dead: sim.dead,
+    }
 }
 
 impl MusicCues {
@@ -102,6 +149,7 @@ impl MusicCues {
         }
         self.tick = sim.tick;
         self.clock = sim.clock;
+        self.mood.update(&scene(sim), DT, &self.mood_params);
     }
 }
 
@@ -251,6 +299,8 @@ struct Music {
     downbeat: Arc<[f32]>,
     beat: Arc<[f32]>,
     band: Option<Band>,
+    /// The style the stage asks for, once one has.
+    stage_style: Option<String>,
     meter: LatencyMeter,
     /// Latency measured over the last log window, in seconds.
     latency: f32,
@@ -296,8 +346,7 @@ fn run_seed() -> u32 {
 }
 
 impl Band {
-    fn new(file: &MusicFile) -> Result<Self, String> {
-        let name = &file.director.style;
+    fn new(file: &MusicFile, name: &str) -> Result<Self, String> {
         let style: Style = music_data(&format!("styles/{name}.ron"))?;
         let library: Vec<LibraryTune> = music_data(&format!("library/{name}.ron"))?;
         let bank: PatchBank = music_data("patches.ron")?;
@@ -337,16 +386,25 @@ impl Music {
             _ => {
                 let mut file = file.clone();
                 file.render = render;
-                self.band = Band::new(&file)
+                let style = self
+                    .stage_style
+                    .clone()
+                    .unwrap_or(file.director.style.clone());
+                self.band = Band::new(&file, &style)
                     .inspect_err(|e| warn!("music: {e}; playing no band"))
                     .ok();
             }
         }
+        cues.mood_params = file.mood.clone();
+        self.file = file;
+        self.set_tempo(cues);
+    }
+
+    fn set_tempo(&self, cues: &mut MusicCues) {
         cues.tempo = Some(match &self.band {
             Some(band) => (band.director.bpm(), band.director.beats_per_bar()),
-            None => (file.click.bpm, file.click.beats_per_bar),
+            None => (self.file.click.bpm, self.file.click.beats_per_bar),
         });
-        self.file = file;
     }
 }
 
@@ -386,6 +444,7 @@ fn start_music(
         downbeat: Arc::from(Vec::new()),
         beat: Arc::from(Vec::new()),
         band: None,
+        stage_style: None,
         meter: LatencyMeter::default(),
         latency: 0.0,
         since_log: 0.0,
@@ -423,6 +482,40 @@ fn reload_music(time: Res<Time>, mut music: ResMut<Music>, mut cues: ResMut<Musi
             info!("music reloaded from {}", music.path.display());
         }
         Err(e) => warn!("{}: {e}; keeping the previous music", music.path.display()),
+    }
+}
+
+/// Each stage's dressing set names its music style: a new set, a new band.
+fn follow_stage(
+    dressing: Option<Res<crate::visuals::Dressing>>,
+    mut music: ResMut<Music>,
+    mut cues: ResMut<MusicCues>,
+) {
+    let Some(dressing) = dressing else {
+        return;
+    };
+    let name = &dressing.set().name;
+    if music.stage_style.as_ref() == Some(name) {
+        return;
+    }
+    music.stage_style = Some(name.clone());
+    if music
+        .band
+        .as_ref()
+        .is_some_and(|b| &b.director.style().name == name)
+    {
+        return;
+    }
+    match Band::new(&music.file, name) {
+        Ok(band) => {
+            music.band = Some(band);
+            music.set_tempo(&mut cues);
+            // Notes already queued belong to the old style.
+            if let Ok(mut inbox) = music.shared.inbox.lock() {
+                inbox.clear();
+            }
+        }
+        Err(e) => warn!("music: no {name} style ({e}); keeping the current band"),
     }
 }
 
@@ -492,7 +585,7 @@ fn schedule_music(
                 && music.sync.sample_for_tick(now, compensation).is_some()
             {
                 let plan = band.director.next_bar(Input {
-                    intensity: cues.intensity,
+                    intensity: cues.mood.intensity,
                     duck: cues.duck,
                 });
                 let (bpm, swing) = (band.director.bpm(), band.director.swing());
@@ -566,17 +659,135 @@ mod tests {
         assert!(!file.click.downbeat.layers.is_empty());
     }
 
+    /// A room with one guard near the player and one far off screen.
+    fn room() -> Sim {
+        let mut sim = Sim::new(tarborn_sim::Level::test_room(), Vec2::ZERO);
+        sim.enemies = vec![
+            tarborn_sim::Enemy::guard(Vec2::new(3.0, 0.6)),
+            tarborn_sim::Enemy::guard(Vec2::new(200.0, 0.6)),
+        ];
+        sim
+    }
+
+    fn settle(sim: &Sim, seconds: f32) -> Mood {
+        let p: MusicFile = from_ron(BUILT_IN).unwrap();
+        let mut mood = Mood::default();
+        for _ in 0..(seconds / DT) as usize {
+            mood.update(&scene(sim), DT, &p.mood);
+        }
+        mood
+    }
+
+    fn layer(intensity: f32) -> usize {
+        let p: MusicFile = from_ron(BUILT_IN).unwrap();
+        p.director
+            .layer_at
+            .iter()
+            .filter(|&&at| intensity >= at)
+            .count()
+    }
+
+    #[test]
+    fn a_calm_room_is_calm() {
+        let sim = room();
+        assert_eq!(scene(&sim).enemies, vec!["unaware"]);
+        let mood = settle(&sim, 5.0);
+        assert_eq!(layer(mood.intensity), 0, "{mood:?}");
+        assert_eq!(mood.danger, 0.0);
+    }
+
+    #[test]
+    fn being_spotted_brings_the_band_in() {
+        let mut sim = room();
+        sim.enemies[0].state = State::Defending;
+        let mood = settle(&sim, 2.0);
+        assert_eq!(layer(mood.intensity), 1, "{mood:?}");
+    }
+
+    #[test]
+    fn a_fight_is_full_band_and_lingers() {
+        let mut sim = room();
+        sim.enemies[0].state = State::Attacking(AttackPhase::Strike);
+        let mood = settle(&sim, 1.0);
+        assert_eq!(layer(mood.intensity), 2, "{mood:?}");
+        // A combo keeps it up after the enemy goes down.
+        sim.enemies[0].state = State::Prone;
+        sim.combo.count = 3;
+        assert_eq!(layer(settle(&sim, 3.0).intensity), 2);
+        // The far guard doesn't count, even attacking.
+        let mut far = room();
+        far.enemies[1].state = State::Attacking(AttackPhase::Strike);
+        assert_eq!(layer(settle(&far, 2.0).intensity), 0);
+    }
+
+    #[test]
+    fn low_health_and_windups_are_danger() {
+        let mut sim = room();
+        sim.health = 1;
+        let hurt = settle(&sim, 2.0);
+        assert!(hurt.danger > 0.3, "{hurt:?}");
+        sim.enemies[0].state = State::Attacking(AttackPhase::Windup);
+        let windup = settle(&sim, 2.0);
+        assert!(windup.danger > hurt.danger, "{windup:?}");
+        assert_eq!(scene(&sim).windups, 1);
+        sim.dead = true;
+        assert_eq!(settle(&sim, 1.0).intensity, 0.0);
+    }
+
+    #[test]
+    fn the_mood_rises_fast_and_falls_slowly() {
+        let p: MusicFile = from_ron(BUILT_IN).unwrap();
+        let mut sim = room();
+        sim.enemies[0].state = State::Attacking(AttackPhase::Strike);
+        let mut mood = Mood::default();
+        for _ in 0..(1.0 / DT) as usize {
+            mood.update(&scene(&sim), DT, &p.mood);
+        }
+        let peak = mood.intensity;
+        sim.enemies[0].state = State::Unaware;
+        for _ in 0..(1.0 / DT) as usize {
+            mood.update(&scene(&sim), DT, &p.mood);
+        }
+        assert!(mood.intensity > peak * 0.6, "{peak} -> {}", mood.intensity);
+    }
+
+    #[test]
+    fn every_state_has_a_name_the_mood_knows() {
+        let p: MusicFile = from_ron(BUILT_IN).unwrap();
+        for phase in [
+            AttackPhase::Windup,
+            AttackPhase::Strike,
+            AttackPhase::Recover,
+        ] {
+            assert!(
+                p.mood
+                    .states
+                    .contains_key(state_name(State::Attacking(phase)))
+            );
+        }
+        for s in [
+            State::Surprised,
+            State::Searching,
+            State::Chasing,
+            State::Defending,
+            State::Dizzy,
+            State::Prone,
+            State::Fleeing,
+            State::Dodging,
+        ] {
+            assert!(p.mood.states.contains_key(state_name(s)), "{s:?}");
+        }
+    }
+
     #[test]
     fn the_built_in_band_starts() {
         let file: MusicFile = from_ron(BUILT_IN).expect("music.ron parses");
-        let band = Band::new(&file).expect("the band starts");
+        let band = Band::new(&file, &file.director.style).expect("the band starts");
         assert!(band.director.bpm() > 0.0);
         for (name, _) in BUILT_IN_DATA {
             if name.starts_with("styles/") {
                 let style = name.trim_start_matches("styles/").trim_end_matches(".ron");
-                let mut f = file.clone();
-                f.director.style = style.into();
-                Band::new(&f).unwrap_or_else(|e| panic!("{style}: {e}"));
+                Band::new(&file, style).unwrap_or_else(|e| panic!("{style}: {e}"));
             }
         }
     }

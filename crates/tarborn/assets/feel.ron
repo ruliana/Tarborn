@@ -58,6 +58,13 @@
     // Directions keep following a wall or ceiling this long after the blob
     // comes off it for a moment.
     surface_memory: 0.15,
+    // Hitting a wall or ceiling with Grip held splats: it can't spring back
+    // off, and keeps this share of the speed along it. Surfaces facing up
+    // more than splat_max_normal_y (floors) don't splat. For
+    // splat_settle_time after, the body can't spring back off the surface.
+    splat_slide_keep: 0.3,
+    splat_max_normal_y: 0.5,
+    splat_settle_time: 0.15,
 
     // GRABBING. Touching an enemy with Grip held grabs it from this much
     // further than a hit reaches. In the air any touch grabs; on a surface,

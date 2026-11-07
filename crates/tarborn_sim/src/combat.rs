@@ -115,6 +115,7 @@ pub(crate) fn resolve(sim: &mut Sim, intent: Intent, events: &mut Vec<Event>) {
     for at in slams {
         shockwave(sim, at, events);
     }
+    sim.on_enemy_left = (sim.on_enemy_left - DT).max(0.0);
     for i in 0..sim.enemies.len() {
         push_blob_out(sim, i);
     }
@@ -137,11 +138,11 @@ fn player_hits(sim: &mut Sim, i: usize, modes: TarModes, events: &mut Vec<Event>
         .fold(f32::INFINITY, f32::min);
     // Grip held reaches a little further: grabbing should be easy.
     let gripping = modes.sticky && sim.held.is_none() && !sim.controller.is_slamming();
-    // A touch grabs when in the air, or when Grip has only just gone down.
-    // Staying small on the ground doesn't grab whatever walks into you.
-    let airborne = sim.blob.touching_count() == 0;
-    let touch_grab = gripping
-        && (airborne || sim.controller.shrunk_for() <= sim.controller.params.touch_grab_window);
+    // Grabs happen only in the air: a touch with Grip held while airborne,
+    // or a lunge arriving with Grip held. Standing on a surface, or on top
+    // of an enemy, nothing grabs. Landing on one with Grip held still does.
+    let airborne = sim.blob.touching_count() == 0 && sim.on_enemy_left <= 0.0;
+    let touch_grab = gripping && airborne;
     let can_grab = touch_grab || (gripping && sim.controller.is_lunging());
     let grab_reach = reach + sim.controller.params.grab_reach;
     if closest >= reach && !(can_grab && closest < grab_reach) {
@@ -175,7 +176,7 @@ fn player_hits(sim: &mut Sim, i: usize, modes: TarModes, events: &mut Vec<Event>
             HitKind::Lunge
         }
     } else if touch_grab && enemy.grabbable(direction) {
-        // Touching an enemy with Grip held grabs it, landing on it or not.
+        // Touching an enemy in the air with Grip held grabs it.
         if enemy.can_evade() {
             let at = enemy.position;
             sim.enemies[i].evade(center);
@@ -509,6 +510,7 @@ fn push_blob_out(sim: &mut Sim, i: usize) {
         return;
     }
     let reach = enemy.radius + sim.blob.params.point_radius;
+    let footing = sim.controller.params.enemy_footing_normal_y;
     for (q, v) in sim
         .blob
         .positions
@@ -521,6 +523,9 @@ fn push_blob_out(sim: &mut Sim, i: usize) {
             continue;
         }
         let normal = offset.try_normalize().unwrap_or(Vec2::Y);
+        if normal.y > footing {
+            sim.on_enemy_left = sim.controller.params.enemy_footing_memory;
+        }
         *q = enemy.position + normal * reach;
         let into = (*v - enemy.velocity).dot(normal);
         if into < 0.0 {

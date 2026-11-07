@@ -109,6 +109,9 @@ pub struct Sim {
     /// Presses that arrived during hitstop, replayed when it ends.
     pending_jump: bool,
     pending_lunge: bool,
+    /// Time left counting the blob as standing on top of an enemy (not in
+    /// the air, so it can't grab it). Refreshed while it rests on one.
+    pub(crate) on_enemy_left: f32,
 }
 
 impl Sim {
@@ -133,6 +136,7 @@ impl Sim {
             tick: 0,
             clock: BeatClock::default(),
             hitstop_left: 0.0,
+            on_enemy_left: 0.0,
             hurt_left: 0.0,
             pending_hurt: None,
             pending_jump: false,

@@ -15,6 +15,7 @@
 
 pub mod analysis;
 pub mod grammar;
+pub mod metrics;
 pub mod patches;
 pub mod render;
 pub mod rng;
@@ -40,6 +41,8 @@ pub struct MusicFile {
     pub stream: stream::StreamParams,
     /// A debug click track on the sim's beat clock.
     pub click: ClickTrack,
+    /// How the quality metrics are computed and weighed.
+    pub metrics: metrics::MetricParams,
 }
 
 /// A metronome on the sim's beat clock, to check that the stream keeps time.

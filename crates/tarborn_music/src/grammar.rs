@@ -15,7 +15,7 @@
 use crate::rng::Rng;
 use crate::score::{ChordSpan, Fragment, Note, Role};
 use crate::style::{BassFeel, FunctionalHarmony, Harmony, ModalHarmony, Style, at};
-use crate::theory::{Chord, Mode, Pc, Quality};
+use crate::theory::{Chord, Mode, Pc, Quality, voice_leading_cost};
 
 /// One section of a form: its chords, in beats from the section start.
 #[derive(Clone, Debug, PartialEq)]
@@ -451,34 +451,30 @@ fn bass(style: &Style, f: &Fragment, layer: u8, rng: &mut Rng) -> Vec<Note> {
         };
         match feel {
             BassFeel::TwoFeel => {
-                notes.push(note(
-                    span.start,
-                    (beats.min(2)) as f32,
-                    root,
-                    b.accent,
-                    &b.patch,
-                ));
-                last = root;
-                if beats >= 4 {
-                    let fifth = place(span.chord.tones()[2], (root + next_root) / 2, range);
-                    let leap_ok = |p: i32| {
-                        (p - root).abs() <= b.max_leap as i32
-                            && (p - next_root).abs() <= b.max_leap as i32
+                // Half notes: the root on each bar line, the fifth between,
+                // and an approach into the next chord on the last one.
+                let halves = (beats / 2).max(1);
+                let fifth = place(span.chord.tones()[2], root + 3, range);
+                for k in 0..halves {
+                    let start = span.start + 2.0 * k as f32;
+                    let length = if k == halves - 1 {
+                        (beats - 2 * k) as f32
+                    } else {
+                        2.0
                     };
-                    let second = if rng.chance(0.5) || !leap_ok(fifth) {
+                    let candidate = if k == 0 || (k % 2 == 0 && k != halves - 1) {
+                        root
+                    } else if k == halves - 1 && rng.chance(0.6) {
                         approach(rng)
                     } else {
                         fifth
                     };
-                    let second = if leap_ok(second) { second } else { root };
-                    notes.push(note(
-                        span.start + 2.0,
-                        (beats - 2) as f32,
-                        second,
-                        b.velocity,
-                        &b.patch,
-                    ));
-                    last = second;
+                    let ok = (candidate - last).abs() <= b.max_leap as i32
+                        && (k != halves - 1 || (candidate - next_root).abs() <= b.max_leap as i32);
+                    let pitch = if ok { candidate } else { root };
+                    let v = if k % 2 == 0 { b.accent } else { b.velocity };
+                    notes.push(note(start, length, pitch, v, &b.patch));
+                    last = pitch;
                 }
             }
             _ => {
@@ -582,11 +578,24 @@ fn comp(style: &Style, f: &Fragment, layer: u8, rng: &mut Rng) -> Vec<Note> {
                     (bar * f.beats_per_bar) as f32 + n as f32 * 0.5
                 });
             let length = rng.range(c.length).min(end - start).max(0.25);
-            let first = rng.int(0, c.voicings.len() as i32 - 1) as usize;
-            let voicing = (0..c.voicings.len())
-                .map(|k| c.voicings[(first + k) % c.voicings.len()])
-                .filter_map(|kind| span.chord.voice(kind, &c.rules, prev.as_deref()))
-                .find(|v| v.iter().all(|&p| fits(span, Pc::of(p))));
+            // Every kind's smoothest voicing; usually the smoothest of
+            // those, sometimes a random one for colour.
+            let options: Vec<Vec<u8>> = c
+                .voicings
+                .iter()
+                .filter_map(|&kind| span.chord.voice(kind, &c.rules, prev.as_deref()))
+                .filter(|v| v.iter().all(|&p| fits(span, Pc::of(p))))
+                .collect();
+            let voicing = if options.is_empty() {
+                None
+            } else if rng.chance(c.smooth) {
+                options
+                    .iter()
+                    .min_by_key(|v| prev.as_deref().map_or(0, |p| voice_leading_cost(p, v)))
+                    .cloned()
+            } else {
+                Some(rng.pick(&options).clone())
+            };
             let Some(voicing) = voicing else {
                 continue;
             };
@@ -788,7 +797,8 @@ pub fn stinger(style: &Style, tune: &Tune, seed: u32) -> Fragment {
             .voicings
             .iter()
             .filter_map(|&k| span.chord.voice(k, &style.comp.rules, prev.as_deref()))
-            .find(|v| v.iter().all(|&p| fits(span, Pc::of(p))));
+            .filter(|v| v.iter().all(|&p| fits(span, Pc::of(p))))
+            .min_by_key(|v| prev.as_deref().map_or(0, |p| voice_leading_cost(p, v)));
         if let Some(v) = voicing {
             for patch in &style.stinger.patches {
                 for &p in &v {

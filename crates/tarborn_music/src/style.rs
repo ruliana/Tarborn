@@ -39,6 +39,9 @@ pub struct Style {
     pub drums: DrumStyle,
     pub lead: LeadStyle,
     pub stinger: StingerStyle,
+    /// Where the metrics want each part, per role and layer.
+    #[serde(default)]
+    pub targets: crate::metrics::Targets,
 }
 
 /// Which harmony grammar the style uses.
@@ -122,6 +125,9 @@ pub struct CompStyle {
     /// Per layer: the patches each hit sounds on (empty: no comping).
     pub patches: PerLayer<Vec<String>>,
     pub voicings: Vec<VoicingKind>,
+    /// Chance a hit takes the smoothest voicing of all the kinds (else a
+    /// random kind's smoothest).
+    pub smooth: f32,
     pub rules: VoicingRules,
     /// Per layer: least and most hits per bar.
     pub hits: PerLayer<[u32; 2]>,

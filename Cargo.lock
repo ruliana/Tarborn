@@ -4987,6 +4987,7 @@ dependencies = [
  "bevy",
  "ron",
  "serde",
+ "tarborn_music",
  "tarborn_pcg",
  "tarborn_sfx",
  "tarborn_sim",
@@ -4999,6 +5000,7 @@ dependencies = [
  "ron",
  "serde",
  "tarborn_sfx",
+ "tarborn_sim",
 ]
 
 [[package]]

@@ -15,6 +15,7 @@
 
 pub mod render;
 pub mod score;
+pub mod stream;
 pub mod time;
 
 pub use render::{Patch, PatchBank, RenderSettings, render};
@@ -29,6 +30,38 @@ use serde::Deserialize;
 pub struct MusicFile {
     /// How fragments are rendered offline (previews, tests, the library).
     pub render: RenderSettings,
+    /// The live stream and its sync with the sim.
+    pub stream: stream::StreamParams,
+    /// A debug click track on the sim's beat clock.
+    pub click: ClickTrack,
+}
+
+/// A metronome on the sim's beat clock, to check that the stream keeps time.
+#[derive(Clone, Debug, Deserialize, PartialEq)]
+#[serde(default, deny_unknown_fields)]
+pub struct ClickTrack {
+    pub enabled: bool,
+    /// Tempo of the beat clock until the director (step 8) sets it per stage.
+    pub bpm: f32,
+    pub beats_per_bar: u32,
+    pub volume: f32,
+    /// Played on the first beat of each bar.
+    pub downbeat: tarborn_sfx::Sfx,
+    /// Played on the other beats.
+    pub beat: tarborn_sfx::Sfx,
+}
+
+impl Default for ClickTrack {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            bpm: 120.0,
+            beats_per_bar: 4,
+            volume: 0.5,
+            downbeat: tarborn_sfx::Sfx::default(),
+            beat: tarborn_sfx::Sfx::default(),
+        }
+    }
 }
 
 /// Loads a RON value with the same options every Tarborn data file uses

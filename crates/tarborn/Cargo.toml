@@ -13,6 +13,7 @@ serde.workspace = true
 tarborn_sim.workspace = true
 tarborn_sfx.workspace = true
 tarborn_pcg.workspace = true
+tarborn_music.workspace = true
 
 [features]
 # `cargo run --features dev` links Bevy dynamically for much faster rebuilds while iterating.

@@ -136,8 +136,8 @@ impl Game {
     }
 
     /// A run stage, built by the loader.
-    fn stage(sim: Sim, exit: rooms::Exit) -> Self {
-        Self::with(Room::Stage, sim, Some(exit))
+    fn stage(sim: Sim, exit: Option<rooms::Exit>) -> Self {
+        Self::with(Room::Stage, sim, exit)
     }
 
     fn with(room: Room, sim: Sim, exit: Option<rooms::Exit>) -> Self {

@@ -86,6 +86,9 @@ pub struct Texts {
     pub resume: String,
     pub restart_run: String,
     pub restart_room: String,
+    pub restart_chunk: String,
+    pub chunks: String,
+    pub chunk_list: String,
     pub quit: String,
     pub loading: String,
     pub cleared: String,
@@ -104,6 +107,8 @@ pub enum Screen {
     Playing,
     /// The pause menu over a frozen stage or room.
     Paused,
+    /// The list of chunk files to playtest one by one.
+    Chunks,
     /// Fading out after the exit, before loading the next stage.
     Transition,
     RunOver,
@@ -116,6 +121,9 @@ pub enum Mode {
     Run,
     /// A debug room (training, arena, dressing), outside any run.
     Room(String),
+    /// One chunk file played on its own, to playtest it: entry `i` of
+    /// [`Flow::chunks`].
+    Chunk(usize),
 }
 
 /// One line of a menu.
@@ -123,6 +131,10 @@ pub enum Mode {
 pub enum Item {
     /// Start a run with the shown seed.
     Start,
+    /// Open the list of chunk files.
+    Chunks,
+    /// Play entry `i` of [`Flow::chunks`].
+    Chunk(usize),
     /// The seed: Left and Right step it, Confirm rolls a random one.
     Seed,
     /// Open debug room `i` of [`RunParams::rooms`].
@@ -134,6 +146,8 @@ pub enum Item {
     Again,
     /// Back to the start menu.
     Quit,
+    /// Back to the list of chunks.
+    ChunkList,
 }
 
 /// Something that happened, fed into [`Flow::update`].
@@ -157,6 +171,8 @@ pub enum Signal {
     Seed(u64),
     /// The stage asked for has been built.
     Loaded,
+    /// The stage or chunk asked for couldn't be built, for this reason.
+    Failed(String),
     /// The blob reached the stage's exit, with this much health.
     Exit {
         health: u32,
@@ -179,6 +195,11 @@ pub enum Order {
     },
     /// Open a debug room, fresh.
     OpenRoom(String),
+    /// Build the chunk file at this path (relative to `assets/chunks/`, no
+    /// extension) to be played on its own.
+    LoadChunk(String),
+    /// Read the list of chunk files again into [`Flow::chunks`].
+    ScanChunks,
     /// Roll a random seed and send it back as [`Signal::Seed`].
     RandomSeed,
     /// Something to log for telemetry: every screen change.
@@ -209,6 +230,11 @@ pub struct Flow {
     pub timer: f32,
     /// The menu item under the cursor.
     pub cursor: usize,
+    /// The chunk files that can be played on their own, as paths relative
+    /// to `assets/chunks/` without the extension. The game fills it.
+    pub chunks: Vec<String>,
+    /// Why the last stage or chunk failed to load, shown on the menus.
+    pub error: Option<String>,
     /// Health carried into the next stage.
     carried: Option<u32>,
     loaded: bool,
@@ -228,6 +254,8 @@ impl Flow {
             stats: RunStats::default(),
             timer: 0.0,
             cursor: 0,
+            chunks: Vec::new(),
+            error: None,
             carried: None,
             loaded: false,
             dead: false,
@@ -240,11 +268,11 @@ impl Flow {
         let p = &self.params;
         match self.screen {
             Screen::Transition => (self.timer / p.fade_out.max(1e-3)).min(1.0),
-            Screen::Playing if self.mode == Mode::Run => {
+            Screen::Playing if !matches!(self.mode, Mode::Room(_)) => {
                 1.0 - (self.timer / p.fade_in.max(1e-3)).min(1.0)
             }
             Screen::Loading => 1.0,
-            Screen::Start | Screen::RunOver => p.dim,
+            Screen::Start | Screen::RunOver | Screen::Chunks => p.dim,
             Screen::Paused => p.pause_dim,
             Screen::Playing => 0.0,
         }
@@ -259,14 +287,31 @@ impl Flow {
     /// none.
     pub fn menu(&self) -> Vec<Item> {
         match self.screen {
-            Screen::Start => [Item::Start, Item::Seed]
+            Screen::Start => [Item::Start, Item::Seed, Item::Chunks]
                 .into_iter()
                 .chain((0..self.params.rooms.len()).map(Item::Room))
                 .collect(),
+            Screen::Chunks => (0..self.chunks.len())
+                .map(Item::Chunk)
+                .chain([Item::Quit])
+                .collect(),
+            Screen::Paused if matches!(self.mode, Mode::Chunk(_)) => {
+                vec![Item::Resume, Item::Restart, Item::ChunkList, Item::Quit]
+            }
             Screen::Paused => vec![Item::Resume, Item::Restart, Item::Quit],
             Screen::RunOver => vec![Item::Again, Item::Quit],
             Screen::Loading | Screen::Playing | Screen::Transition => Vec::new(),
         }
+    }
+
+    /// The first menu item shown when only `lines` fit: the cursor stays in
+    /// view, kept near the middle of a long list.
+    pub fn menu_first(&self, lines: usize) -> usize {
+        let len = self.menu().len();
+        if len <= lines {
+            return 0;
+        }
+        self.cursor.saturating_sub(lines / 2).min(len - lines)
     }
 
     /// The words for a menu item.
@@ -277,8 +322,14 @@ impl Flow {
             Item::Seed => format!("{}  < {} >", t.seed, self.seed),
             Item::Room(i) => self.params.rooms[i].1.clone(),
             Item::Resume => t.resume.clone(),
-            Item::Restart if self.mode == Mode::Run => t.restart_run.clone(),
-            Item::Restart => t.restart_room.clone(),
+            Item::Chunks => t.chunks.clone(),
+            Item::Chunk(i) => self.chunks.get(i).cloned().unwrap_or_default(),
+            Item::ChunkList => t.chunk_list.clone(),
+            Item::Restart => match self.mode {
+                Mode::Run => t.restart_run.clone(),
+                Mode::Room(_) => t.restart_room.clone(),
+                Mode::Chunk(_) => t.restart_chunk.clone(),
+            },
             Item::Again => t.again.clone(),
             Item::Quit => t.quit.clone(),
         }
@@ -317,6 +368,28 @@ impl Flow {
         orders.push(Order::OpenRoom(id));
     }
 
+    fn load_chunk(&mut self, i: usize, orders: &mut Vec<Order>) {
+        let Some(path) = self.chunks.get(i).cloned() else {
+            return;
+        };
+        self.mode = Mode::Chunk(i);
+        self.loaded = false;
+        self.dead = false;
+        self.enter(Screen::Loading, orders);
+        orders.push(Order::LoadChunk(path));
+    }
+
+    fn chunk_list(&mut self, orders: &mut Vec<Order>) {
+        let at = match self.mode {
+            Mode::Chunk(i) => i,
+            _ => 0,
+        };
+        self.mode = Mode::Run;
+        self.enter(Screen::Chunks, orders);
+        orders.push(Order::ScanChunks);
+        self.cursor = at;
+    }
+
     fn resume(&mut self, orders: &mut Vec<Order>) {
         self.enter(Screen::Playing, orders);
         self.timer = self.paused_at;
@@ -343,8 +416,15 @@ impl Flow {
                 self.enter(Screen::Playing, &mut orders);
             }
             Screen::Playing if self.dead && self.timer >= p.death_delay => {
-                self.stats.won = false;
-                self.enter(Screen::RunOver, &mut orders);
+                if let Mode::Chunk(i) = self.mode {
+                    self.load_chunk(i, &mut orders);
+                } else {
+                    self.stats.won = false;
+                    self.enter(Screen::RunOver, &mut orders);
+                }
+            }
+            Screen::Transition if self.timer >= p.fade_out && self.mode != Mode::Run => {
+                self.chunk_list(&mut orders);
             }
             Screen::Transition if self.timer >= p.fade_out => {
                 self.stats.cleared += 1;
@@ -385,15 +465,33 @@ impl Flow {
                 self.seed = (self.seed + 1).min(MAX_SEED);
             }
             (Screen::Start, Signal::Seed(seed)) => self.seed = (*seed).min(MAX_SEED),
-            (Screen::Loading, Signal::Loaded) => self.loaded = true,
+            (Screen::Loading, Signal::Loaded) => {
+                self.loaded = true;
+                self.error = None;
+            }
+            (Screen::Loading, Signal::Failed(why)) => {
+                self.error = Some(why.clone());
+                if matches!(self.mode, Mode::Chunk(_)) {
+                    self.chunk_list(orders);
+                } else {
+                    self.quit(orders);
+                }
+            }
             (Screen::Playing, Signal::Combo(c)) => {
                 self.stats.best_combo = self.stats.best_combo.max(*c);
+            }
+            (Screen::Playing, Signal::Exit { .. })
+                if matches!(self.mode, Mode::Chunk(_)) && !self.dead =>
+            {
+                self.enter(Screen::Transition, orders);
             }
             (Screen::Playing, Signal::Exit { health }) if self.mode == Mode::Run && !self.dead => {
                 self.carried = self.params.keep_health.then_some(*health);
                 self.enter(Screen::Transition, orders);
             }
-            (Screen::Playing, Signal::Died) if self.mode == Mode::Run && !self.dead => {
+            (Screen::Playing, Signal::Died)
+                if !matches!(self.mode, Mode::Room(_)) && !self.dead =>
+            {
                 self.dead = true;
                 self.timer = 0.0;
             }
@@ -402,7 +500,10 @@ impl Flow {
                 self.enter(Screen::Paused, orders);
             }
             (Screen::Paused, Signal::Back) => self.resume(orders),
-            (Screen::RunOver | Screen::Loading, Signal::Back) => self.quit(orders),
+            (Screen::Loading, Signal::Back) if matches!(self.mode, Mode::Chunk(_)) => {
+                self.chunk_list(orders);
+            }
+            (Screen::RunOver | Screen::Loading | Screen::Chunks, Signal::Back) => self.quit(orders),
             _ => {}
         }
     }
@@ -414,6 +515,9 @@ impl Flow {
         match item {
             Item::Start | Item::Again => self.start_run(orders),
             Item::Seed => orders.push(Order::RandomSeed),
+            Item::Chunks => self.chunk_list(orders),
+            Item::Chunk(i) => self.load_chunk(i, orders),
+            Item::ChunkList => self.chunk_list(orders),
             Item::Room(i) => {
                 let id = self.params.rooms[i].0.clone();
                 self.open_room(id, orders);
@@ -422,6 +526,7 @@ impl Flow {
             Item::Restart => match self.mode.clone() {
                 Mode::Run => self.start_run(orders),
                 Mode::Room(id) => self.open_room(id, orders),
+                Mode::Chunk(i) => self.load_chunk(i, orders),
             },
             Item::Quit => self.quit(orders),
         }
@@ -567,8 +672,11 @@ mod tests {
     fn debug_rooms_open_from_the_start_screen_and_escape_back() {
         let mut f = flow();
         let p = f.params.clone();
-        // Down past Start and Seed, to the second room.
-        f.update(TICK, &[Signal::Down, Signal::Down, Signal::Down]);
+        // Down past Start, Seed and the chunk list, to the second room.
+        f.update(
+            TICK,
+            &[Signal::Down, Signal::Down, Signal::Down, Signal::Down],
+        );
         assert_eq!(f.menu()[f.cursor], Item::Room(1));
         assert_eq!(p.rooms[1].0, "arena");
         let orders = f.update(TICK, &[Signal::Confirm]);
@@ -671,7 +779,7 @@ mod tests {
     fn menus_wrap_and_answer_the_pointer() {
         let mut f = flow();
         let n = f.menu().len();
-        assert_eq!(n, 2 + f.params.rooms.len());
+        assert_eq!(n, 3 + f.params.rooms.len());
         f.update(TICK, &[Signal::Up]);
         assert_eq!(f.cursor, n - 1);
         f.update(TICK, &[Signal::Down]);
@@ -712,5 +820,114 @@ mod tests {
         wait(&mut f, p.run_over_min);
         let orders = f.update(TICK, &[Signal::Confirm]);
         assert_eq!(loads(&orders), [(0, None)]);
+    }
+
+    fn with_chunks() -> Flow {
+        let mut f = flow();
+        f.chunks = vec!["stages/a".into(), "stages/b".into(), "library/c".into()];
+        f
+    }
+
+    #[test]
+    fn a_chunk_is_picked_from_the_list_and_played_on_its_own() {
+        let mut f = with_chunks();
+        let p = f.params.clone();
+        f.update(TICK, &[Signal::Down, Signal::Down]);
+        assert_eq!(f.menu()[f.cursor], Item::Chunks);
+        let orders = f.update(TICK, &[Signal::Confirm]);
+        assert_eq!(f.screen, Screen::Chunks);
+        assert!(
+            orders.contains(&Order::ScanChunks),
+            "the list is read fresh"
+        );
+        assert_eq!(
+            f.menu(),
+            [Item::Chunk(0), Item::Chunk(1), Item::Chunk(2), Item::Quit]
+        );
+        assert_eq!(f.label(Item::Chunk(2)), "library/c");
+
+        let orders = f.update(TICK, &[Signal::Down, Signal::Confirm]);
+        assert_eq!(f.screen, Screen::Loading);
+        assert_eq!(f.mode, Mode::Chunk(1));
+        assert!(orders.contains(&Order::LoadChunk("stages/b".into())));
+        f.update(TICK, &[Signal::Loaded]);
+        wait(&mut f, p.loading_min + 0.1);
+        assert_eq!(f.screen, Screen::Playing);
+        assert_eq!(f.stats.time, 0.0, "not a run");
+
+        // Dying replays the chunk instead of ending a run.
+        f.update(TICK, &[Signal::Died]);
+        let orders = wait(&mut f, p.death_delay + 0.05);
+        assert!(orders.contains(&Order::LoadChunk("stages/b".into())));
+        f.update(TICK, &[Signal::Loaded]);
+        wait(&mut f, p.loading_min + 0.1);
+
+        // The exit fades back to the list, with the cursor on the chunk.
+        f.update(TICK, &[Signal::Exit { health: 3 }]);
+        assert_eq!(f.screen, Screen::Transition);
+        wait(&mut f, p.fade_out + 0.05);
+        assert_eq!(f.screen, Screen::Chunks);
+        assert_eq!(f.cursor, 1);
+        assert_eq!(f.stats.cleared, 0);
+        f.update(TICK, &[Signal::Back]);
+        assert_eq!(f.screen, Screen::Start);
+    }
+
+    #[test]
+    fn the_pause_menu_of_a_chunk_restarts_it_or_goes_back_to_the_list() {
+        let mut f = with_chunks();
+        let p = f.params.clone();
+        f.update(TICK, &[Signal::Down, Signal::Down, Signal::Confirm]);
+        f.update(TICK, &[Signal::Down, Signal::Down, Signal::Confirm]);
+        f.update(TICK, &[Signal::Loaded]);
+        wait(&mut f, p.loading_min + 0.1);
+        f.update(TICK, &[Signal::Back]);
+        assert_eq!(
+            f.menu(),
+            [Item::Resume, Item::Restart, Item::ChunkList, Item::Quit]
+        );
+        assert_eq!(f.label(Item::Restart), p.texts.restart_chunk);
+        let orders = f.update(TICK, &[Signal::Down, Signal::Confirm]);
+        assert!(orders.contains(&Order::LoadChunk("library/c".into())));
+        f.update(TICK, &[Signal::Loaded]);
+        wait(&mut f, p.loading_min + 0.1);
+        f.update(
+            TICK,
+            &[Signal::Back, Signal::Down, Signal::Down, Signal::Confirm],
+        );
+        assert_eq!(f.screen, Screen::Chunks);
+        assert_eq!(f.cursor, 2);
+    }
+
+    #[test]
+    fn a_long_menu_scrolls_to_keep_the_cursor_in_view() {
+        let mut f = with_chunks();
+        f.chunks = (0..30).map(|i| format!("library/{i}")).collect();
+        f.update(TICK, &[Signal::Down, Signal::Down, Signal::Confirm]);
+        assert_eq!(f.menu_first(10), 0);
+        for _ in 0..12 {
+            f.update(TICK, &[Signal::Down]);
+        }
+        assert_eq!(f.menu_first(10), 7);
+        f.update(TICK, &[Signal::Up]);
+        assert_eq!(f.cursor, 11);
+        assert_eq!(f.menu_first(10), 6);
+        assert_eq!(f.menu_first(100), 0);
+        f.update(TICK, &vec![Signal::Up; 12]);
+        assert_eq!(f.cursor, 30, "wraps to Back");
+        assert_eq!(f.menu_first(10), 21);
+    }
+
+    #[test]
+    fn a_chunk_that_fails_to_load_goes_back_to_the_list_and_says_why() {
+        let mut f = with_chunks();
+        f.update(TICK, &[Signal::Down, Signal::Down, Signal::Confirm]);
+        f.update(TICK, &[Signal::Confirm]);
+        assert_eq!(f.screen, Screen::Loading);
+        f.update(TICK, &[Signal::Failed("socket 1 is blocked".into())]);
+        assert_eq!(f.screen, Screen::Chunks);
+        assert_eq!(f.error.as_deref(), Some("socket 1 is blocked"));
+        f.update(TICK, &[Signal::Confirm, Signal::Loaded]);
+        assert_eq!(f.error, None);
     }
 }

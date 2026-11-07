@@ -3,8 +3,556 @@
 [
     (
         style: "forest",
+        seed: 920381401,
+        cell: (0, "8+4:m7"),
+        bpm: 120.768684,
+        key: "E",
+        minor: true,
+        form: [
+            "A",
+            "A",
+            "B",
+            "A",
+        ],
+        score: 0.9816176,
+        parts: [
+            (
+                section: 0,
+                role: Bass,
+                layer: 0,
+                variants: [
+                    (
+                        seed: 531702349,
+                        score: 1.0,
+                        cell: (0, 0),
+                    ),
+                ],
+            ),
+            (
+                section: 0,
+                role: Bass,
+                layer: 1,
+                variants: [
+                    (
+                        seed: 3896497260,
+                        score: 1.0,
+                        cell: (1, 0),
+                    ),
+                ],
+            ),
+            (
+                section: 0,
+                role: Bass,
+                layer: 2,
+                variants: [
+                    (
+                        seed: 244828962,
+                        score: 1.0,
+                        cell: (2, 0),
+                    ),
+                ],
+            ),
+            (
+                section: 0,
+                role: Comp,
+                layer: 1,
+                variants: [
+                    (
+                        seed: 16615458,
+                        score: 1.0,
+                        cell: (0, 0),
+                    ),
+                ],
+            ),
+            (
+                section: 0,
+                role: Comp,
+                layer: 2,
+                variants: [
+                    (
+                        seed: 1870898568,
+                        score: 1.0,
+                        cell: (0, 1),
+                    ),
+                    (
+                        seed: 3279176186,
+                        score: 1.0,
+                        cell: (0, 0),
+                    ),
+                ],
+            ),
+            (
+                section: 0,
+                role: Drums,
+                layer: 0,
+                variants: [
+                    (
+                        seed: 2569511998,
+                        score: 1.0,
+                        cell: (2, 0),
+                    ),
+                ],
+            ),
+            (
+                section: 0,
+                role: Drums,
+                layer: 1,
+                variants: [
+                    (
+                        seed: 3508678239,
+                        score: 1.0,
+                        cell: (2, 0),
+                    ),
+                ],
+            ),
+            (
+                section: 0,
+                role: Drums,
+                layer: 2,
+                variants: [
+                    (
+                        seed: 1339368024,
+                        score: 1.0,
+                        cell: (2, 0),
+                    ),
+                ],
+            ),
+            (
+                section: 0,
+                role: Lead,
+                layer: 2,
+                variants: [
+                    (
+                        seed: 177690970,
+                        score: 1.0,
+                        cell: (1, 0),
+                    ),
+                    (
+                        seed: 1444341828,
+                        score: 1.0,
+                        cell: (0, 0),
+                    ),
+                    (
+                        seed: 1732273640,
+                        score: 1.0,
+                        cell: (0, 1),
+                    ),
+                ],
+            ),
+            (
+                section: 1,
+                role: Bass,
+                layer: 0,
+                variants: [
+                    (
+                        seed: 2326356862,
+                        score: 1.0,
+                        cell: (0, 0),
+                    ),
+                ],
+            ),
+            (
+                section: 1,
+                role: Bass,
+                layer: 1,
+                variants: [
+                    (
+                        seed: 1879094186,
+                        score: 1.0,
+                        cell: (1, 0),
+                    ),
+                ],
+            ),
+            (
+                section: 1,
+                role: Bass,
+                layer: 2,
+                variants: [
+                    (
+                        seed: 2913339407,
+                        score: 1.0,
+                        cell: (2, 0),
+                    ),
+                ],
+            ),
+            (
+                section: 1,
+                role: Comp,
+                layer: 1,
+                variants: [
+                    (
+                        seed: 850771589,
+                        score: 1.0,
+                        cell: (0, 0),
+                    ),
+                    (
+                        seed: 3950445108,
+                        score: 1.0,
+                        cell: (0, 1),
+                    ),
+                ],
+            ),
+            (
+                section: 1,
+                role: Comp,
+                layer: 2,
+                variants: [
+                    (
+                        seed: 885422865,
+                        score: 1.0,
+                        cell: (1, 1),
+                    ),
+                    (
+                        seed: 1636397999,
+                        score: 1.0,
+                        cell: (0, 1),
+                    ),
+                    (
+                        seed: 2202305283,
+                        score: 1.0,
+                        cell: (0, 0),
+                    ),
+                ],
+            ),
+            (
+                section: 1,
+                role: Drums,
+                layer: 0,
+                variants: [
+                    (
+                        seed: 1231160032,
+                        score: 0.88970584,
+                        cell: (2, 0),
+                    ),
+                ],
+            ),
+            (
+                section: 1,
+                role: Drums,
+                layer: 1,
+                variants: [
+                    (
+                        seed: 2570418752,
+                        score: 0.88970584,
+                        cell: (2, 0),
+                    ),
+                ],
+            ),
+            (
+                section: 1,
+                role: Drums,
+                layer: 2,
+                variants: [
+                    (
+                        seed: 926470624,
+                        score: 0.88970584,
+                        cell: (2, 0),
+                    ),
+                ],
+            ),
+            (
+                section: 1,
+                role: Lead,
+                layer: 2,
+                variants: [
+                    (
+                        seed: 4122650689,
+                        score: 1.0,
+                        cell: (1, 0),
+                    ),
+                    (
+                        seed: 4272599938,
+                        score: 0.9973124,
+                        cell: (1, 1),
+                    ),
+                    (
+                        seed: 3404386653,
+                        score: 0.94897956,
+                        cell: (2, 1),
+                    ),
+                ],
+            ),
+        ],
+        stinger_seed: 1066720085,
+    ),
+    (
+        style: "forest",
+        seed: 2074670616,
+        cell: (0, "8+4:maj7#11"),
+        bpm: 121.040695,
+        key: "C",
+        minor: false,
+        form: [
+            "A",
+            "A",
+            "B",
+            "A",
+        ],
+        score: 0.9808006,
+        parts: [
+            (
+                section: 0,
+                role: Bass,
+                layer: 0,
+                variants: [
+                    (
+                        seed: 4083041698,
+                        score: 1.0,
+                        cell: (0, 0),
+                    ),
+                ],
+            ),
+            (
+                section: 0,
+                role: Bass,
+                layer: 1,
+                variants: [
+                    (
+                        seed: 2093533728,
+                        score: 1.0,
+                        cell: (1, 0),
+                    ),
+                ],
+            ),
+            (
+                section: 0,
+                role: Bass,
+                layer: 2,
+                variants: [
+                    (
+                        seed: 797821727,
+                        score: 1.0,
+                        cell: (2, 0),
+                    ),
+                ],
+            ),
+            (
+                section: 0,
+                role: Comp,
+                layer: 1,
+                variants: [
+                    (
+                        seed: 2001460483,
+                        score: 1.0,
+                        cell: (0, 1),
+                    ),
+                    (
+                        seed: 3276860677,
+                        score: 1.0,
+                        cell: (0, 0),
+                    ),
+                ],
+            ),
+            (
+                section: 0,
+                role: Comp,
+                layer: 2,
+                variants: [
+                    (
+                        seed: 3254526596,
+                        score: 1.0,
+                        cell: (0, 1),
+                    ),
+                    (
+                        seed: 4273463741,
+                        score: 1.0,
+                        cell: (0, 0),
+                    ),
+                ],
+            ),
+            (
+                section: 0,
+                role: Drums,
+                layer: 0,
+                variants: [
+                    (
+                        seed: 1811588033,
+                        score: 1.0,
+                        cell: (2, 0),
+                    ),
+                ],
+            ),
+            (
+                section: 0,
+                role: Drums,
+                layer: 1,
+                variants: [
+                    (
+                        seed: 2822420697,
+                        score: 1.0,
+                        cell: (2, 0),
+                    ),
+                ],
+            ),
+            (
+                section: 0,
+                role: Drums,
+                layer: 2,
+                variants: [
+                    (
+                        seed: 1602482455,
+                        score: 1.0,
+                        cell: (2, 0),
+                    ),
+                ],
+            ),
+            (
+                section: 0,
+                role: Lead,
+                layer: 2,
+                variants: [
+                    (
+                        seed: 622975800,
+                        score: 1.0,
+                        cell: (0, 0),
+                    ),
+                    (
+                        seed: 1550229488,
+                        score: 1.0,
+                        cell: (1, 1),
+                    ),
+                    (
+                        seed: 1872495662,
+                        score: 1.0,
+                        cell: (1, 0),
+                    ),
+                ],
+            ),
+            (
+                section: 1,
+                role: Bass,
+                layer: 0,
+                variants: [
+                    (
+                        seed: 2343095237,
+                        score: 1.0,
+                        cell: (0, 0),
+                    ),
+                ],
+            ),
+            (
+                section: 1,
+                role: Bass,
+                layer: 1,
+                variants: [
+                    (
+                        seed: 3116859084,
+                        score: 1.0,
+                        cell: (1, 0),
+                    ),
+                ],
+            ),
+            (
+                section: 1,
+                role: Bass,
+                layer: 2,
+                variants: [
+                    (
+                        seed: 528468636,
+                        score: 1.0,
+                        cell: (2, 0),
+                    ),
+                ],
+            ),
+            (
+                section: 1,
+                role: Comp,
+                layer: 1,
+                variants: [
+                    (
+                        seed: 2550631846,
+                        score: 1.0,
+                        cell: (0, 0),
+                    ),
+                ],
+            ),
+            (
+                section: 1,
+                role: Comp,
+                layer: 2,
+                variants: [
+                    (
+                        seed: 292018962,
+                        score: 1.0,
+                        cell: (0, 0),
+                    ),
+                    (
+                        seed: 2950129604,
+                        score: 1.0,
+                        cell: (1, 1),
+                    ),
+                    (
+                        seed: 3814047920,
+                        score: 1.0,
+                        cell: (0, 1),
+                    ),
+                ],
+            ),
+            (
+                section: 1,
+                role: Drums,
+                layer: 0,
+                variants: [
+                    (
+                        seed: 1099720642,
+                        score: 0.8750001,
+                        cell: (2, 0),
+                    ),
+                ],
+            ),
+            (
+                section: 1,
+                role: Drums,
+                layer: 1,
+                variants: [
+                    (
+                        seed: 1763597957,
+                        score: 0.88970584,
+                        cell: (2, 0),
+                    ),
+                ],
+            ),
+            (
+                section: 1,
+                role: Drums,
+                layer: 2,
+                variants: [
+                    (
+                        seed: 1338153777,
+                        score: 0.88970584,
+                        cell: (2, 0),
+                    ),
+                ],
+            ),
+            (
+                section: 1,
+                role: Lead,
+                layer: 2,
+                variants: [
+                    (
+                        seed: 1839631520,
+                        score: 1.0,
+                        cell: (0, 0),
+                    ),
+                    (
+                        seed: 3559965368,
+                        score: 1.0,
+                        cell: (1, 1),
+                    ),
+                    (
+                        seed: 3614643471,
+                        score: 0.98214287,
+                        cell: (1, 0),
+                    ),
+                ],
+            ),
+        ],
+        stinger_seed: 3771032894,
+    ),
+    (
+        style: "forest",
         seed: 3916497734,
-        cell: (0, "16+8:m7"),
+        cell: (0, "8+8:m7"),
         bpm: 122.67149,
         key: "D",
         minor: true,
@@ -46,7 +594,7 @@
                 layer: 2,
                 variants: [
                     (
-                        seed: 1213336664,
+                        seed: 1060946598,
                         score: 1.0,
                         cell: (2, 0),
                     ),
@@ -123,18 +671,18 @@
                 layer: 2,
                 variants: [
                     (
-                        seed: 242076641,
-                        score: 1.0,
-                        cell: (0, 1),
-                    ),
-                    (
                         seed: 886805880,
                         score: 1.0,
                         cell: (0, 0),
                     ),
                     (
-                        seed: 1211738497,
+                        seed: 1933865595,
                         score: 1.0,
+                        cell: (0, 1),
+                    ),
+                    (
+                        seed: 1211738497,
+                        score: 0.9933036,
                         cell: (1, 1),
                     ),
                 ],
@@ -264,539 +812,6 @@
             ),
         ],
         stinger_seed: 2445533825,
-    ),
-    (
-        style: "forest",
-        seed: 1259862510,
-        cell: (0, "16+8:maj7#11"),
-        bpm: 111.62682,
-        key: "D",
-        minor: false,
-        form: [
-            "A",
-            "A",
-            "B",
-            "A",
-        ],
-        score: 1.0,
-        parts: [
-            (
-                section: 0,
-                role: Bass,
-                layer: 0,
-                variants: [
-                    (
-                        seed: 3464545062,
-                        score: 1.0,
-                        cell: (0, 0),
-                    ),
-                ],
-            ),
-            (
-                section: 0,
-                role: Bass,
-                layer: 1,
-                variants: [
-                    (
-                        seed: 770075779,
-                        score: 1.0,
-                        cell: (1, 0),
-                    ),
-                ],
-            ),
-            (
-                section: 0,
-                role: Bass,
-                layer: 2,
-                variants: [
-                    (
-                        seed: 3559250573,
-                        score: 1.0,
-                        cell: (2, 0),
-                    ),
-                ],
-            ),
-            (
-                section: 0,
-                role: Comp,
-                layer: 1,
-                variants: [
-                    (
-                        seed: 2942206563,
-                        score: 1.0,
-                        cell: (0, 0),
-                    ),
-                ],
-            ),
-            (
-                section: 0,
-                role: Comp,
-                layer: 2,
-                variants: [
-                    (
-                        seed: 143279414,
-                        score: 1.0,
-                        cell: (0, 0),
-                    ),
-                    (
-                        seed: 1074533538,
-                        score: 1.0,
-                        cell: (0, 1),
-                    ),
-                ],
-            ),
-            (
-                section: 0,
-                role: Drums,
-                layer: 0,
-                variants: [
-                    (
-                        seed: 59517793,
-                        score: 1.0,
-                        cell: (2, 0),
-                    ),
-                ],
-            ),
-            (
-                section: 0,
-                role: Drums,
-                layer: 1,
-                variants: [
-                    (
-                        seed: 1127822813,
-                        score: 1.0,
-                        cell: (2, 0),
-                    ),
-                ],
-            ),
-            (
-                section: 0,
-                role: Drums,
-                layer: 2,
-                variants: [
-                    (
-                        seed: 3556538827,
-                        score: 1.0,
-                        cell: (2, 0),
-                    ),
-                ],
-            ),
-            (
-                section: 0,
-                role: Lead,
-                layer: 2,
-                variants: [
-                    (
-                        seed: 947962449,
-                        score: 1.0,
-                        cell: (0, 0),
-                    ),
-                    (
-                        seed: 3649709752,
-                        score: 1.0,
-                        cell: (1, 0),
-                    ),
-                    (
-                        seed: 3450528424,
-                        score: 0.9827369,
-                        cell: (0, 1),
-                    ),
-                ],
-            ),
-            (
-                section: 1,
-                role: Bass,
-                layer: 0,
-                variants: [
-                    (
-                        seed: 2224997715,
-                        score: 1.0,
-                        cell: (0, 0),
-                    ),
-                ],
-            ),
-            (
-                section: 1,
-                role: Bass,
-                layer: 1,
-                variants: [
-                    (
-                        seed: 1008536282,
-                        score: 1.0,
-                        cell: (1, 0),
-                    ),
-                ],
-            ),
-            (
-                section: 1,
-                role: Bass,
-                layer: 2,
-                variants: [
-                    (
-                        seed: 1094556606,
-                        score: 1.0,
-                        cell: (2, 0),
-                    ),
-                ],
-            ),
-            (
-                section: 1,
-                role: Comp,
-                layer: 1,
-                variants: [
-                    (
-                        seed: 3158197370,
-                        score: 1.0,
-                        cell: (0, 0),
-                    ),
-                ],
-            ),
-            (
-                section: 1,
-                role: Comp,
-                layer: 2,
-                variants: [
-                    (
-                        seed: 1425705359,
-                        score: 1.0,
-                        cell: (0, 0),
-                    ),
-                    (
-                        seed: 2882370332,
-                        score: 1.0,
-                        cell: (0, 1),
-                    ),
-                    (
-                        seed: 493294713,
-                        score: 0.959596,
-                        cell: (0, 2),
-                    ),
-                ],
-            ),
-            (
-                section: 1,
-                role: Drums,
-                layer: 0,
-                variants: [
-                    (
-                        seed: 3541686276,
-                        score: 1.0,
-                        cell: (2, 0),
-                    ),
-                ],
-            ),
-            (
-                section: 1,
-                role: Drums,
-                layer: 1,
-                variants: [
-                    (
-                        seed: 2306073545,
-                        score: 1.0,
-                        cell: (2, 0),
-                    ),
-                ],
-            ),
-            (
-                section: 1,
-                role: Drums,
-                layer: 2,
-                variants: [
-                    (
-                        seed: 4048919551,
-                        score: 1.0,
-                        cell: (2, 0),
-                    ),
-                ],
-            ),
-            (
-                section: 1,
-                role: Lead,
-                layer: 2,
-                variants: [
-                    (
-                        seed: 513726318,
-                        score: 1.0,
-                        cell: (1, 1),
-                    ),
-                    (
-                        seed: 844491713,
-                        score: 1.0,
-                        cell: (1, 0),
-                    ),
-                    (
-                        seed: 3965108770,
-                        score: 1.0,
-                        cell: (0, 1),
-                    ),
-                ],
-            ),
-        ],
-        stinger_seed: 1378192379,
-    ),
-    (
-        style: "forest",
-        seed: 3928841866,
-        cell: (0, "8+8:m7"),
-        bpm: 116.93992,
-        key: "D",
-        minor: true,
-        form: [
-            "A",
-            "A",
-            "B",
-            "A",
-        ],
-        score: 1.0,
-        parts: [
-            (
-                section: 0,
-                role: Bass,
-                layer: 0,
-                variants: [
-                    (
-                        seed: 1414164258,
-                        score: 1.0,
-                        cell: (0, 0),
-                    ),
-                ],
-            ),
-            (
-                section: 0,
-                role: Bass,
-                layer: 1,
-                variants: [
-                    (
-                        seed: 1125274482,
-                        score: 1.0,
-                        cell: (1, 0),
-                    ),
-                ],
-            ),
-            (
-                section: 0,
-                role: Bass,
-                layer: 2,
-                variants: [
-                    (
-                        seed: 760038800,
-                        score: 1.0,
-                        cell: (2, 0),
-                    ),
-                ],
-            ),
-            (
-                section: 0,
-                role: Comp,
-                layer: 1,
-                variants: [
-                    (
-                        seed: 704770178,
-                        score: 1.0,
-                        cell: (0, 0),
-                    ),
-                ],
-            ),
-            (
-                section: 0,
-                role: Comp,
-                layer: 2,
-                variants: [
-                    (
-                        seed: 641463689,
-                        score: 1.0,
-                        cell: (0, 0),
-                    ),
-                    (
-                        seed: 3488698263,
-                        score: 1.0,
-                        cell: (0, 1),
-                    ),
-                ],
-            ),
-            (
-                section: 0,
-                role: Drums,
-                layer: 0,
-                variants: [
-                    (
-                        seed: 4173609598,
-                        score: 1.0,
-                        cell: (2, 0),
-                    ),
-                ],
-            ),
-            (
-                section: 0,
-                role: Drums,
-                layer: 1,
-                variants: [
-                    (
-                        seed: 678825241,
-                        score: 1.0,
-                        cell: (2, 0),
-                    ),
-                ],
-            ),
-            (
-                section: 0,
-                role: Drums,
-                layer: 2,
-                variants: [
-                    (
-                        seed: 3934348250,
-                        score: 1.0,
-                        cell: (2, 0),
-                    ),
-                ],
-            ),
-            (
-                section: 0,
-                role: Lead,
-                layer: 2,
-                variants: [
-                    (
-                        seed: 254133287,
-                        score: 1.0,
-                        cell: (1, 0),
-                    ),
-                    (
-                        seed: 2136341281,
-                        score: 1.0,
-                        cell: (0, 0),
-                    ),
-                    (
-                        seed: 2352189543,
-                        score: 1.0,
-                        cell: (0, 1),
-                    ),
-                ],
-            ),
-            (
-                section: 1,
-                role: Bass,
-                layer: 0,
-                variants: [
-                    (
-                        seed: 2107390922,
-                        score: 1.0,
-                        cell: (0, 0),
-                    ),
-                ],
-            ),
-            (
-                section: 1,
-                role: Bass,
-                layer: 1,
-                variants: [
-                    (
-                        seed: 4286380060,
-                        score: 1.0,
-                        cell: (1, 0),
-                    ),
-                ],
-            ),
-            (
-                section: 1,
-                role: Bass,
-                layer: 2,
-                variants: [
-                    (
-                        seed: 3459233680,
-                        score: 1.0,
-                        cell: (2, 0),
-                    ),
-                ],
-            ),
-            (
-                section: 1,
-                role: Comp,
-                layer: 1,
-                variants: [
-                    (
-                        seed: 2065357020,
-                        score: 1.0,
-                        cell: (0, 0),
-                    ),
-                ],
-            ),
-            (
-                section: 1,
-                role: Comp,
-                layer: 2,
-                variants: [
-                    (
-                        seed: 2709049786,
-                        score: 1.0,
-                        cell: (0, 0),
-                    ),
-                    (
-                        seed: 3885831936,
-                        score: 1.0,
-                        cell: (0, 1),
-                    ),
-                ],
-            ),
-            (
-                section: 1,
-                role: Drums,
-                layer: 0,
-                variants: [
-                    (
-                        seed: 968665927,
-                        score: 1.0,
-                        cell: (2, 0),
-                    ),
-                ],
-            ),
-            (
-                section: 1,
-                role: Drums,
-                layer: 1,
-                variants: [
-                    (
-                        seed: 3913510353,
-                        score: 1.0,
-                        cell: (2, 0),
-                    ),
-                ],
-            ),
-            (
-                section: 1,
-                role: Drums,
-                layer: 2,
-                variants: [
-                    (
-                        seed: 501971979,
-                        score: 1.0,
-                        cell: (2, 0),
-                    ),
-                ],
-            ),
-            (
-                section: 1,
-                role: Lead,
-                layer: 2,
-                variants: [
-                    (
-                        seed: 976238029,
-                        score: 1.0,
-                        cell: (0, 0),
-                    ),
-                    (
-                        seed: 1308142674,
-                        score: 1.0,
-                        cell: (0, 1),
-                    ),
-                    (
-                        seed: 4193638281,
-                        score: 1.0,
-                        cell: (1, 1),
-                    ),
-                ],
-            ),
-        ],
-        stinger_seed: 2321973355,
     ),
     (
         style: "forest",
@@ -1069,9 +1084,557 @@
     ),
     (
         style: "forest",
-        seed: 2837362390,
-        cell: (1, "16+8:m7"),
-        bpm: 132.19104,
+        seed: 3328770752,
+        cell: (1, "8+4:m7"),
+        bpm: 127.6548,
+        key: "D",
+        minor: true,
+        form: [
+            "A",
+            "A",
+            "B",
+            "A",
+        ],
+        score: 0.9808006,
+        parts: [
+            (
+                section: 0,
+                role: Bass,
+                layer: 0,
+                variants: [
+                    (
+                        seed: 2967896874,
+                        score: 1.0,
+                        cell: (0, 0),
+                    ),
+                ],
+            ),
+            (
+                section: 0,
+                role: Bass,
+                layer: 1,
+                variants: [
+                    (
+                        seed: 1578551749,
+                        score: 1.0,
+                        cell: (1, 0),
+                    ),
+                ],
+            ),
+            (
+                section: 0,
+                role: Bass,
+                layer: 2,
+                variants: [
+                    (
+                        seed: 513259999,
+                        score: 1.0,
+                        cell: (2, 0),
+                    ),
+                ],
+            ),
+            (
+                section: 0,
+                role: Comp,
+                layer: 1,
+                variants: [
+                    (
+                        seed: 1948911146,
+                        score: 1.0,
+                        cell: (0, 0),
+                    ),
+                ],
+            ),
+            (
+                section: 0,
+                role: Comp,
+                layer: 2,
+                variants: [
+                    (
+                        seed: 48847355,
+                        score: 1.0,
+                        cell: (0, 1),
+                    ),
+                    (
+                        seed: 1191486916,
+                        score: 1.0,
+                        cell: (0, 0),
+                    ),
+                ],
+            ),
+            (
+                section: 0,
+                role: Drums,
+                layer: 0,
+                variants: [
+                    (
+                        seed: 4113736053,
+                        score: 1.0,
+                        cell: (2, 0),
+                    ),
+                ],
+            ),
+            (
+                section: 0,
+                role: Drums,
+                layer: 1,
+                variants: [
+                    (
+                        seed: 223735975,
+                        score: 1.0,
+                        cell: (2, 0),
+                    ),
+                ],
+            ),
+            (
+                section: 0,
+                role: Drums,
+                layer: 2,
+                variants: [
+                    (
+                        seed: 2696682003,
+                        score: 1.0,
+                        cell: (2, 0),
+                    ),
+                ],
+            ),
+            (
+                section: 0,
+                role: Lead,
+                layer: 2,
+                variants: [
+                    (
+                        seed: 1343102382,
+                        score: 1.0,
+                        cell: (1, 0),
+                    ),
+                    (
+                        seed: 1950867580,
+                        score: 1.0,
+                        cell: (0, 0),
+                    ),
+                    (
+                        seed: 1838677418,
+                        score: 0.9933036,
+                        cell: (1, 1),
+                    ),
+                ],
+            ),
+            (
+                section: 1,
+                role: Bass,
+                layer: 0,
+                variants: [
+                    (
+                        seed: 2065062209,
+                        score: 1.0,
+                        cell: (0, 0),
+                    ),
+                ],
+            ),
+            (
+                section: 1,
+                role: Bass,
+                layer: 1,
+                variants: [
+                    (
+                        seed: 2257234055,
+                        score: 1.0,
+                        cell: (1, 0),
+                    ),
+                ],
+            ),
+            (
+                section: 1,
+                role: Bass,
+                layer: 2,
+                variants: [
+                    (
+                        seed: 4066624577,
+                        score: 1.0,
+                        cell: (2, 0),
+                    ),
+                ],
+            ),
+            (
+                section: 1,
+                role: Comp,
+                layer: 1,
+                variants: [
+                    (
+                        seed: 956208261,
+                        score: 1.0,
+                        cell: (0, 1),
+                    ),
+                    (
+                        seed: 2939881682,
+                        score: 1.0,
+                        cell: (0, 0),
+                    ),
+                ],
+            ),
+            (
+                section: 1,
+                role: Comp,
+                layer: 2,
+                variants: [
+                    (
+                        seed: 985575398,
+                        score: 1.0,
+                        cell: (0, 1),
+                    ),
+                    (
+                        seed: 1408383209,
+                        score: 1.0,
+                        cell: (0, 0),
+                    ),
+                    (
+                        seed: 2061408214,
+                        score: 1.0,
+                        cell: (1, 0),
+                    ),
+                ],
+            ),
+            (
+                section: 1,
+                role: Drums,
+                layer: 0,
+                variants: [
+                    (
+                        seed: 2888342978,
+                        score: 0.8750001,
+                        cell: (2, 0),
+                    ),
+                ],
+            ),
+            (
+                section: 1,
+                role: Drums,
+                layer: 1,
+                variants: [
+                    (
+                        seed: 3646980579,
+                        score: 0.88970584,
+                        cell: (2, 0),
+                    ),
+                ],
+            ),
+            (
+                section: 1,
+                role: Drums,
+                layer: 2,
+                variants: [
+                    (
+                        seed: 141939746,
+                        score: 0.88970584,
+                        cell: (2, 0),
+                    ),
+                ],
+            ),
+            (
+                section: 1,
+                role: Lead,
+                layer: 2,
+                variants: [
+                    (
+                        seed: 332354914,
+                        score: 1.0,
+                        cell: (0, 1),
+                    ),
+                    (
+                        seed: 2421156042,
+                        score: 1.0,
+                        cell: (0, 0),
+                    ),
+                    (
+                        seed: 3096865609,
+                        score: 0.9326898,
+                        cell: (1, 1),
+                    ),
+                ],
+            ),
+        ],
+        stinger_seed: 4094893994,
+    ),
+    (
+        style: "forest",
+        seed: 2724291707,
+        cell: (1, "8+4:maj7#11"),
+        bpm: 135.9834,
+        key: "A",
+        minor: false,
+        form: [
+            "A",
+            "A",
+            "B",
+            "A",
+        ],
+        score: 0.9808006,
+        parts: [
+            (
+                section: 0,
+                role: Bass,
+                layer: 0,
+                variants: [
+                    (
+                        seed: 1259179844,
+                        score: 1.0,
+                        cell: (0, 0),
+                    ),
+                ],
+            ),
+            (
+                section: 0,
+                role: Bass,
+                layer: 1,
+                variants: [
+                    (
+                        seed: 761846004,
+                        score: 1.0,
+                        cell: (1, 0),
+                    ),
+                ],
+            ),
+            (
+                section: 0,
+                role: Bass,
+                layer: 2,
+                variants: [
+                    (
+                        seed: 1511716844,
+                        score: 1.0,
+                        cell: (2, 0),
+                    ),
+                ],
+            ),
+            (
+                section: 0,
+                role: Comp,
+                layer: 1,
+                variants: [
+                    (
+                        seed: 2893513203,
+                        score: 1.0,
+                        cell: (0, 0),
+                    ),
+                ],
+            ),
+            (
+                section: 0,
+                role: Comp,
+                layer: 2,
+                variants: [
+                    (
+                        seed: 1281026408,
+                        score: 1.0,
+                        cell: (0, 0),
+                    ),
+                    (
+                        seed: 4163480893,
+                        score: 1.0,
+                        cell: (0, 1),
+                    ),
+                ],
+            ),
+            (
+                section: 0,
+                role: Drums,
+                layer: 0,
+                variants: [
+                    (
+                        seed: 3534535298,
+                        score: 1.0,
+                        cell: (2, 0),
+                    ),
+                ],
+            ),
+            (
+                section: 0,
+                role: Drums,
+                layer: 1,
+                variants: [
+                    (
+                        seed: 1689327586,
+                        score: 1.0,
+                        cell: (2, 0),
+                    ),
+                ],
+            ),
+            (
+                section: 0,
+                role: Drums,
+                layer: 2,
+                variants: [
+                    (
+                        seed: 2736709606,
+                        score: 1.0,
+                        cell: (2, 0),
+                    ),
+                ],
+            ),
+            (
+                section: 0,
+                role: Lead,
+                layer: 2,
+                variants: [
+                    (
+                        seed: 3353506335,
+                        score: 1.0,
+                        cell: (0, 1),
+                    ),
+                    (
+                        seed: 2191047656,
+                        score: 0.9923469,
+                        cell: (0, 0),
+                    ),
+                    (
+                        seed: 525557681,
+                        score: 0.98214287,
+                        cell: (1, 0),
+                    ),
+                ],
+            ),
+            (
+                section: 1,
+                role: Bass,
+                layer: 0,
+                variants: [
+                    (
+                        seed: 2417787324,
+                        score: 1.0,
+                        cell: (0, 0),
+                    ),
+                ],
+            ),
+            (
+                section: 1,
+                role: Bass,
+                layer: 1,
+                variants: [
+                    (
+                        seed: 3123296546,
+                        score: 1.0,
+                        cell: (1, 0),
+                    ),
+                ],
+            ),
+            (
+                section: 1,
+                role: Bass,
+                layer: 2,
+                variants: [
+                    (
+                        seed: 9017369,
+                        score: 1.0,
+                        cell: (2, 0),
+                    ),
+                ],
+            ),
+            (
+                section: 1,
+                role: Comp,
+                layer: 1,
+                variants: [
+                    (
+                        seed: 2134213611,
+                        score: 1.0,
+                        cell: (0, 1),
+                    ),
+                    (
+                        seed: 2485171512,
+                        score: 1.0,
+                        cell: (0, 0),
+                    ),
+                ],
+            ),
+            (
+                section: 1,
+                role: Comp,
+                layer: 2,
+                variants: [
+                    (
+                        seed: 1078485297,
+                        score: 1.0,
+                        cell: (1, 1),
+                    ),
+                    (
+                        seed: 2488584344,
+                        score: 1.0,
+                        cell: (0, 1),
+                    ),
+                    (
+                        seed: 2643088943,
+                        score: 1.0,
+                        cell: (0, 0),
+                    ),
+                ],
+            ),
+            (
+                section: 1,
+                role: Drums,
+                layer: 0,
+                variants: [
+                    (
+                        seed: 346553390,
+                        score: 0.8750001,
+                        cell: (2, 0),
+                    ),
+                ],
+            ),
+            (
+                section: 1,
+                role: Drums,
+                layer: 1,
+                variants: [
+                    (
+                        seed: 630503228,
+                        score: 0.88970584,
+                        cell: (2, 0),
+                    ),
+                ],
+            ),
+            (
+                section: 1,
+                role: Drums,
+                layer: 2,
+                variants: [
+                    (
+                        seed: 3456400998,
+                        score: 0.88970584,
+                        cell: (2, 0),
+                    ),
+                ],
+            ),
+            (
+                section: 1,
+                role: Lead,
+                layer: 2,
+                variants: [
+                    (
+                        seed: 1776989868,
+                        score: 1.0,
+                        cell: (1, 1),
+                    ),
+                    (
+                        seed: 2246819363,
+                        score: 1.0,
+                        cell: (0, 1),
+                    ),
+                    (
+                        seed: 1643000892,
+                        score: 0.88010204,
+                        cell: (2, 0),
+                    ),
+                ],
+            ),
+        ],
+        stinger_seed: 1888919416,
+    ),
+    (
+        style: "forest",
+        seed: 2068188873,
+        cell: (1, "8+8:m7"),
+        bpm: 129.48694,
         key: "E",
         minor: true,
         form: [
@@ -1088,7 +1651,7 @@
                 layer: 0,
                 variants: [
                     (
-                        seed: 3849580081,
+                        seed: 2726729473,
                         score: 1.0,
                         cell: (0, 0),
                     ),
@@ -1100,7 +1663,7 @@
                 layer: 1,
                 variants: [
                     (
-                        seed: 1663248586,
+                        seed: 2939619500,
                         score: 1.0,
                         cell: (1, 0),
                     ),
@@ -1112,7 +1675,7 @@
                 layer: 2,
                 variants: [
                     (
-                        seed: 2127825402,
+                        seed: 2919363173,
                         score: 1.0,
                         cell: (2, 0),
                     ),
@@ -1124,7 +1687,7 @@
                 layer: 1,
                 variants: [
                     (
-                        seed: 886088624,
+                        seed: 3881737853,
                         score: 1.0,
                         cell: (0, 0),
                     ),
@@ -1136,12 +1699,12 @@
                 layer: 2,
                 variants: [
                     (
-                        seed: 1391678609,
+                        seed: 399165581,
                         score: 1.0,
                         cell: (0, 1),
                     ),
                     (
-                        seed: 4291287744,
+                        seed: 3017895873,
                         score: 1.0,
                         cell: (0, 0),
                     ),
@@ -1153,7 +1716,7 @@
                 layer: 0,
                 variants: [
                     (
-                        seed: 1214965110,
+                        seed: 1874349133,
                         score: 1.0,
                         cell: (2, 0),
                     ),
@@ -1165,7 +1728,7 @@
                 layer: 1,
                 variants: [
                     (
-                        seed: 804674358,
+                        seed: 1816845152,
                         score: 1.0,
                         cell: (2, 0),
                     ),
@@ -1177,7 +1740,7 @@
                 layer: 2,
                 variants: [
                     (
-                        seed: 3913560454,
+                        seed: 1635575092,
                         score: 1.0,
                         cell: (2, 0),
                     ),
@@ -1189,17 +1752,17 @@
                 layer: 2,
                 variants: [
                     (
-                        seed: 1098372761,
+                        seed: 250086496,
                         score: 1.0,
                         cell: (0, 0),
                     ),
                     (
-                        seed: 3063733743,
+                        seed: 783031616,
                         score: 1.0,
-                        cell: (1, 1),
+                        cell: (1, 0),
                     ),
                     (
-                        seed: 3093545765,
+                        seed: 1019069309,
                         score: 1.0,
                         cell: (0, 1),
                     ),
@@ -1211,7 +1774,7 @@
                 layer: 0,
                 variants: [
                     (
-                        seed: 426133308,
+                        seed: 3060795948,
                         score: 1.0,
                         cell: (0, 0),
                     ),
@@ -1223,7 +1786,7 @@
                 layer: 1,
                 variants: [
                     (
-                        seed: 83637225,
+                        seed: 2052344828,
                         score: 1.0,
                         cell: (1, 0),
                     ),
@@ -1235,7 +1798,7 @@
                 layer: 2,
                 variants: [
                     (
-                        seed: 723009552,
+                        seed: 2221385575,
                         score: 1.0,
                         cell: (2, 0),
                     ),
@@ -1247,7 +1810,7 @@
                 layer: 1,
                 variants: [
                     (
-                        seed: 1170072272,
+                        seed: 896368424,
                         score: 1.0,
                         cell: (0, 0),
                     ),
@@ -1259,293 +1822,29 @@
                 layer: 2,
                 variants: [
                     (
-                        seed: 1736841211,
-                        score: 1.0,
-                        cell: (0, 0),
-                    ),
-                    (
-                        seed: 1884993189,
-                        score: 1.0,
-                        cell: (0, 1),
-                    ),
-                ],
-            ),
-            (
-                section: 1,
-                role: Drums,
-                layer: 0,
-                variants: [
-                    (
-                        seed: 2084227608,
-                        score: 1.0,
-                        cell: (2, 0),
-                    ),
-                ],
-            ),
-            (
-                section: 1,
-                role: Drums,
-                layer: 1,
-                variants: [
-                    (
-                        seed: 3142850170,
-                        score: 1.0,
-                        cell: (2, 0),
-                    ),
-                ],
-            ),
-            (
-                section: 1,
-                role: Drums,
-                layer: 2,
-                variants: [
-                    (
-                        seed: 4177877920,
-                        score: 1.0,
-                        cell: (2, 0),
-                    ),
-                ],
-            ),
-            (
-                section: 1,
-                role: Lead,
-                layer: 2,
-                variants: [
-                    (
-                        seed: 79745735,
+                        seed: 70409639,
                         score: 1.0,
                         cell: (0, 1),
                     ),
                     (
-                        seed: 2407361176,
+                        seed: 3903107416,
                         score: 1.0,
                         cell: (0, 0),
                     ),
                     (
-                        seed: 3168302059,
-                        score: 0.99382585,
+                        seed: 2379950101,
+                        score: 0.9722222,
                         cell: (1, 1),
                     ),
                 ],
             ),
-        ],
-        stinger_seed: 1667902979,
-    ),
-    (
-        style: "forest",
-        seed: 4186179912,
-        cell: (1, "16+8:maj7#11"),
-        bpm: 129.69469,
-        key: "G",
-        minor: false,
-        form: [
-            "A",
-            "A",
-            "B",
-            "A",
-        ],
-        score: 1.0,
-        parts: [
-            (
-                section: 0,
-                role: Bass,
-                layer: 0,
-                variants: [
-                    (
-                        seed: 3370150389,
-                        score: 1.0,
-                        cell: (0, 0),
-                    ),
-                ],
-            ),
-            (
-                section: 0,
-                role: Bass,
-                layer: 1,
-                variants: [
-                    (
-                        seed: 145964340,
-                        score: 1.0,
-                        cell: (1, 0),
-                    ),
-                ],
-            ),
-            (
-                section: 0,
-                role: Bass,
-                layer: 2,
-                variants: [
-                    (
-                        seed: 4260328434,
-                        score: 1.0,
-                        cell: (2, 0),
-                    ),
-                ],
-            ),
-            (
-                section: 0,
-                role: Comp,
-                layer: 1,
-                variants: [
-                    (
-                        seed: 1910084177,
-                        score: 1.0,
-                        cell: (0, 0),
-                    ),
-                ],
-            ),
-            (
-                section: 0,
-                role: Comp,
-                layer: 2,
-                variants: [
-                    (
-                        seed: 995261732,
-                        score: 1.0,
-                        cell: (0, 1),
-                    ),
-                    (
-                        seed: 2994613771,
-                        score: 1.0,
-                        cell: (0, 0),
-                    ),
-                ],
-            ),
-            (
-                section: 0,
-                role: Drums,
-                layer: 0,
-                variants: [
-                    (
-                        seed: 3021391481,
-                        score: 1.0,
-                        cell: (2, 0),
-                    ),
-                ],
-            ),
-            (
-                section: 0,
-                role: Drums,
-                layer: 1,
-                variants: [
-                    (
-                        seed: 2521464175,
-                        score: 1.0,
-                        cell: (2, 0),
-                    ),
-                ],
-            ),
-            (
-                section: 0,
-                role: Drums,
-                layer: 2,
-                variants: [
-                    (
-                        seed: 1758363347,
-                        score: 1.0,
-                        cell: (2, 0),
-                    ),
-                ],
-            ),
-            (
-                section: 0,
-                role: Lead,
-                layer: 2,
-                variants: [
-                    (
-                        seed: 2294898655,
-                        score: 1.0,
-                        cell: (0, 0),
-                    ),
-                    (
-                        seed: 2606136111,
-                        score: 1.0,
-                        cell: (1, 0),
-                    ),
-                    (
-                        seed: 2615305432,
-                        score: 1.0,
-                        cell: (0, 1),
-                    ),
-                ],
-            ),
-            (
-                section: 1,
-                role: Bass,
-                layer: 0,
-                variants: [
-                    (
-                        seed: 3030454425,
-                        score: 1.0,
-                        cell: (0, 0),
-                    ),
-                ],
-            ),
-            (
-                section: 1,
-                role: Bass,
-                layer: 1,
-                variants: [
-                    (
-                        seed: 3215073414,
-                        score: 1.0,
-                        cell: (1, 0),
-                    ),
-                ],
-            ),
-            (
-                section: 1,
-                role: Bass,
-                layer: 2,
-                variants: [
-                    (
-                        seed: 3086054791,
-                        score: 1.0,
-                        cell: (2, 0),
-                    ),
-                ],
-            ),
-            (
-                section: 1,
-                role: Comp,
-                layer: 1,
-                variants: [
-                    (
-                        seed: 1953814416,
-                        score: 1.0,
-                        cell: (0, 0),
-                    ),
-                    (
-                        seed: 3770606498,
-                        score: 1.0,
-                        cell: (0, 1),
-                    ),
-                ],
-            ),
-            (
-                section: 1,
-                role: Comp,
-                layer: 2,
-                variants: [
-                    (
-                        seed: 833802222,
-                        score: 1.0,
-                        cell: (0, 1),
-                    ),
-                    (
-                        seed: 2701127121,
-                        score: 1.0,
-                        cell: (0, 0),
-                    ),
-                ],
-            ),
             (
                 section: 1,
                 role: Drums,
                 layer: 0,
                 variants: [
                     (
-                        seed: 2981856184,
+                        seed: 3443883544,
                         score: 1.0,
                         cell: (2, 0),
                     ),
@@ -1557,7 +1856,7 @@
                 layer: 1,
                 variants: [
                     (
-                        seed: 3926590467,
+                        seed: 3468159285,
                         score: 1.0,
                         cell: (2, 0),
                     ),
@@ -1569,7 +1868,7 @@
                 layer: 2,
                 variants: [
                     (
-                        seed: 1248304359,
+                        seed: 1138034432,
                         score: 1.0,
                         cell: (2, 0),
                     ),
@@ -1581,288 +1880,24 @@
                 layer: 2,
                 variants: [
                     (
-                        seed: 1763373419,
-                        score: 1.0,
-                        cell: (1, 1),
-                    ),
-                    (
-                        seed: 2474495281,
-                        score: 1.0,
-                        cell: (0, 0),
-                    ),
-                    (
-                        seed: 4023090774,
-                        score: 1.0,
-                        cell: (1, 0),
-                    ),
-                ],
-            ),
-        ],
-        stinger_seed: 3222326779,
-    ),
-    (
-        style: "forest",
-        seed: 3202520581,
-        cell: (1, "8+8:m7"),
-        bpm: 133.31621,
-        key: "A",
-        minor: true,
-        form: [
-            "A",
-            "A",
-            "B",
-            "A",
-        ],
-        score: 1.0,
-        parts: [
-            (
-                section: 0,
-                role: Bass,
-                layer: 0,
-                variants: [
-                    (
-                        seed: 4023952724,
-                        score: 1.0,
-                        cell: (0, 0),
-                    ),
-                ],
-            ),
-            (
-                section: 0,
-                role: Bass,
-                layer: 1,
-                variants: [
-                    (
-                        seed: 2812759504,
-                        score: 1.0,
-                        cell: (1, 0),
-                    ),
-                ],
-            ),
-            (
-                section: 0,
-                role: Bass,
-                layer: 2,
-                variants: [
-                    (
-                        seed: 456896482,
-                        score: 1.0,
-                        cell: (2, 0),
-                    ),
-                ],
-            ),
-            (
-                section: 0,
-                role: Comp,
-                layer: 1,
-                variants: [
-                    (
-                        seed: 3453591921,
-                        score: 1.0,
-                        cell: (0, 0),
-                    ),
-                ],
-            ),
-            (
-                section: 0,
-                role: Comp,
-                layer: 2,
-                variants: [
-                    (
-                        seed: 378498231,
+                        seed: 462923884,
                         score: 1.0,
                         cell: (0, 1),
                     ),
                     (
-                        seed: 1937629428,
-                        score: 1.0,
-                        cell: (0, 0),
-                    ),
-                ],
-            ),
-            (
-                section: 0,
-                role: Drums,
-                layer: 0,
-                variants: [
-                    (
-                        seed: 1026157956,
-                        score: 1.0,
-                        cell: (2, 0),
-                    ),
-                ],
-            ),
-            (
-                section: 0,
-                role: Drums,
-                layer: 1,
-                variants: [
-                    (
-                        seed: 1431919570,
-                        score: 1.0,
-                        cell: (2, 0),
-                    ),
-                ],
-            ),
-            (
-                section: 0,
-                role: Drums,
-                layer: 2,
-                variants: [
-                    (
-                        seed: 3655619629,
-                        score: 1.0,
-                        cell: (2, 0),
-                    ),
-                ],
-            ),
-            (
-                section: 0,
-                role: Lead,
-                layer: 2,
-                variants: [
-                    (
-                        seed: 1088072191,
-                        score: 1.0,
-                        cell: (0, 1),
-                    ),
-                    (
-                        seed: 2016583395,
-                        score: 1.0,
-                        cell: (1, 1),
-                    ),
-                    (
-                        seed: 3408226890,
+                        seed: 1261030762,
                         score: 1.0,
                         cell: (1, 0),
                     ),
-                ],
-            ),
-            (
-                section: 1,
-                role: Bass,
-                layer: 0,
-                variants: [
                     (
-                        seed: 2936215938,
-                        score: 1.0,
-                        cell: (0, 0),
-                    ),
-                ],
-            ),
-            (
-                section: 1,
-                role: Bass,
-                layer: 1,
-                variants: [
-                    (
-                        seed: 4079669918,
-                        score: 1.0,
-                        cell: (1, 0),
-                    ),
-                ],
-            ),
-            (
-                section: 1,
-                role: Bass,
-                layer: 2,
-                variants: [
-                    (
-                        seed: 3964776499,
-                        score: 1.0,
-                        cell: (2, 0),
-                    ),
-                ],
-            ),
-            (
-                section: 1,
-                role: Comp,
-                layer: 1,
-                variants: [
-                    (
-                        seed: 1962999060,
-                        score: 1.0,
-                        cell: (0, 0),
-                    ),
-                ],
-            ),
-            (
-                section: 1,
-                role: Comp,
-                layer: 2,
-                variants: [
-                    (
-                        seed: 944917860,
-                        score: 1.0,
-                        cell: (0, 1),
-                    ),
-                    (
-                        seed: 1448398945,
-                        score: 1.0,
-                        cell: (0, 0),
-                    ),
-                ],
-            ),
-            (
-                section: 1,
-                role: Drums,
-                layer: 0,
-                variants: [
-                    (
-                        seed: 3844605136,
-                        score: 1.0,
-                        cell: (2, 0),
-                    ),
-                ],
-            ),
-            (
-                section: 1,
-                role: Drums,
-                layer: 1,
-                variants: [
-                    (
-                        seed: 3688855726,
-                        score: 1.0,
-                        cell: (2, 0),
-                    ),
-                ],
-            ),
-            (
-                section: 1,
-                role: Drums,
-                layer: 2,
-                variants: [
-                    (
-                        seed: 2571102459,
-                        score: 1.0,
-                        cell: (2, 0),
-                    ),
-                ],
-            ),
-            (
-                section: 1,
-                role: Lead,
-                layer: 2,
-                variants: [
-                    (
-                        seed: 1115971633,
-                        score: 1.0,
-                        cell: (0, 1),
-                    ),
-                    (
-                        seed: 1547692441,
-                        score: 1.0,
-                        cell: (1, 1),
-                    ),
-                    (
-                        seed: 3998237559,
+                        seed: 2680705356,
                         score: 1.0,
                         cell: (0, 0),
                     ),
                 ],
             ),
         ],
-        stinger_seed: 1708848673,
+        stinger_seed: 3428520930,
     ),
     (
         style: "forest",
@@ -2130,8 +2165,277 @@
     ),
     (
         style: "forest",
+        seed: 607894129,
+        cell: (2, "8+4:m7"),
+        bpm: 137.13972,
+        key: "A",
+        minor: true,
+        form: [
+            "A",
+            "A",
+            "B",
+            "A",
+        ],
+        score: 0.9803437,
+        parts: [
+            (
+                section: 0,
+                role: Bass,
+                layer: 0,
+                variants: [
+                    (
+                        seed: 1537068830,
+                        score: 1.0,
+                        cell: (0, 0),
+                    ),
+                ],
+            ),
+            (
+                section: 0,
+                role: Bass,
+                layer: 1,
+                variants: [
+                    (
+                        seed: 1039524413,
+                        score: 1.0,
+                        cell: (1, 0),
+                    ),
+                ],
+            ),
+            (
+                section: 0,
+                role: Bass,
+                layer: 2,
+                variants: [
+                    (
+                        seed: 987949946,
+                        score: 1.0,
+                        cell: (2, 0),
+                    ),
+                ],
+            ),
+            (
+                section: 0,
+                role: Comp,
+                layer: 1,
+                variants: [
+                    (
+                        seed: 2240621132,
+                        score: 1.0,
+                        cell: (0, 0),
+                    ),
+                ],
+            ),
+            (
+                section: 0,
+                role: Comp,
+                layer: 2,
+                variants: [
+                    (
+                        seed: 3506805218,
+                        score: 1.0,
+                        cell: (0, 0),
+                    ),
+                    (
+                        seed: 3610409771,
+                        score: 1.0,
+                        cell: (0, 1),
+                    ),
+                ],
+            ),
+            (
+                section: 0,
+                role: Drums,
+                layer: 0,
+                variants: [
+                    (
+                        seed: 1300371484,
+                        score: 1.0,
+                        cell: (2, 0),
+                    ),
+                ],
+            ),
+            (
+                section: 0,
+                role: Drums,
+                layer: 1,
+                variants: [
+                    (
+                        seed: 2854014301,
+                        score: 1.0,
+                        cell: (2, 0),
+                    ),
+                ],
+            ),
+            (
+                section: 0,
+                role: Drums,
+                layer: 2,
+                variants: [
+                    (
+                        seed: 4135472689,
+                        score: 1.0,
+                        cell: (2, 0),
+                    ),
+                ],
+            ),
+            (
+                section: 0,
+                role: Lead,
+                layer: 2,
+                variants: [
+                    (
+                        seed: 614293127,
+                        score: 1.0,
+                        cell: (1, 1),
+                    ),
+                    (
+                        seed: 634399615,
+                        score: 1.0,
+                        cell: (0, 0),
+                    ),
+                    (
+                        seed: 3191873844,
+                        score: 1.0,
+                        cell: (1, 0),
+                    ),
+                ],
+            ),
+            (
+                section: 1,
+                role: Bass,
+                layer: 0,
+                variants: [
+                    (
+                        seed: 2810734099,
+                        score: 1.0,
+                        cell: (0, 0),
+                    ),
+                ],
+            ),
+            (
+                section: 1,
+                role: Bass,
+                layer: 1,
+                variants: [
+                    (
+                        seed: 3902185837,
+                        score: 0.9917745,
+                        cell: (1, 0),
+                    ),
+                ],
+            ),
+            (
+                section: 1,
+                role: Bass,
+                layer: 2,
+                variants: [
+                    (
+                        seed: 2748587159,
+                        score: 1.0,
+                        cell: (2, 0),
+                    ),
+                ],
+            ),
+            (
+                section: 1,
+                role: Comp,
+                layer: 1,
+                variants: [
+                    (
+                        seed: 981066869,
+                        score: 1.0,
+                        cell: (0, 0),
+                    ),
+                ],
+            ),
+            (
+                section: 1,
+                role: Comp,
+                layer: 2,
+                variants: [
+                    (
+                        seed: 824679667,
+                        score: 1.0,
+                        cell: (0, 0),
+                    ),
+                    (
+                        seed: 1945676727,
+                        score: 1.0,
+                        cell: (0, 1),
+                    ),
+                    (
+                        seed: 3284312902,
+                        score: 1.0,
+                        cell: (1, 1),
+                    ),
+                ],
+            ),
+            (
+                section: 1,
+                role: Drums,
+                layer: 0,
+                variants: [
+                    (
+                        seed: 4203571607,
+                        score: 0.8750001,
+                        cell: (2, 0),
+                    ),
+                ],
+            ),
+            (
+                section: 1,
+                role: Drums,
+                layer: 1,
+                variants: [
+                    (
+                        seed: 1052672017,
+                        score: 0.88970584,
+                        cell: (2, 0),
+                    ),
+                ],
+            ),
+            (
+                section: 1,
+                role: Drums,
+                layer: 2,
+                variants: [
+                    (
+                        seed: 1262466641,
+                        score: 0.88970584,
+                        cell: (2, 0),
+                    ),
+                ],
+            ),
+            (
+                section: 1,
+                role: Lead,
+                layer: 2,
+                variants: [
+                    (
+                        seed: 2530344102,
+                        score: 1.0,
+                        cell: (1, 1),
+                    ),
+                    (
+                        seed: 3711380308,
+                        score: 0.98214287,
+                        cell: (1, 0),
+                    ),
+                    (
+                        seed: 3072253135,
+                        score: 0.89285713,
+                        cell: (1, 2),
+                    ),
+                ],
+            ),
+        ],
+        stinger_seed: 2423147257,
+    ),
+    (
+        style: "forest",
         seed: 828775579,
-        cell: (2, "16+8:m7"),
+        cell: (2, "8+8:m7"),
         bpm: 136.69492,
         key: "E",
         minor: true,
@@ -2173,7 +2477,7 @@
                 layer: 2,
                 variants: [
                     (
-                        seed: 3373688001,
+                        seed: 4239005961,
                         score: 1.0,
                         cell: (2, 0),
                     ),
@@ -2250,19 +2554,19 @@
                 layer: 2,
                 variants: [
                     (
-                        seed: 2633179226,
+                        seed: 2192129172,
                         score: 1.0,
-                        cell: (0, 0),
+                        cell: (0, 1),
                     ),
                     (
-                        seed: 2813246585,
+                        seed: 2597886224,
                         score: 1.0,
                         cell: (1, 1),
                     ),
                     (
-                        seed: 3014498113,
-                        score: 0.98214287,
-                        cell: (1, 0),
+                        seed: 2633179226,
+                        score: 1.0,
+                        cell: (0, 0),
                     ),
                 ],
             ),
@@ -2400,7 +2704,7 @@
     (
         style: "forest",
         seed: 2336759739,
-        cell: (2, "16+8:maj7#11"),
+        cell: (2, "8+8:maj7#11"),
         bpm: 149.73055,
         key: "A",
         minor: false,
@@ -2410,7 +2714,7 @@
             "B",
             "A",
         ],
-        score: 0.99954647,
+        score: 1.0,
         parts: [
             (
                 section: 0,
@@ -2442,8 +2746,8 @@
                 layer: 2,
                 variants: [
                     (
-                        seed: 3013938834,
-                        score: 0.99183756,
+                        seed: 4237361589,
+                        score: 1.0,
                         cell: (2, 0),
                     ),
                 ],
@@ -2466,7 +2770,7 @@
                 layer: 2,
                 variants: [
                     (
-                        seed: 608752199,
+                        seed: 834494151,
                         score: 1.0,
                         cell: (0, 0),
                     ),
@@ -2519,9 +2823,9 @@
                 layer: 2,
                 variants: [
                     (
-                        seed: 2643543062,
+                        seed: 1304483259,
                         score: 1.0,
-                        cell: (0, 0),
+                        cell: (1, 1),
                     ),
                     (
                         seed: 3793403122,
@@ -2529,8 +2833,8 @@
                         cell: (0, 1),
                     ),
                     (
-                        seed: 4191141941,
-                        score: 0.9750379,
+                        seed: 4166417188,
+                        score: 0.98214287,
                         cell: (1, 0),
                     ),
                 ],
@@ -2660,543 +2964,5 @@
             ),
         ],
         stinger_seed: 1498710083,
-    ),
-    (
-        style: "forest",
-        seed: 2319122714,
-        cell: (2, "8+8:m7"),
-        bpm: 142.33224,
-        key: "D",
-        minor: true,
-        form: [
-            "A",
-            "A",
-            "B",
-            "A",
-        ],
-        score: 1.0,
-        parts: [
-            (
-                section: 0,
-                role: Bass,
-                layer: 0,
-                variants: [
-                    (
-                        seed: 3025237914,
-                        score: 1.0,
-                        cell: (0, 0),
-                    ),
-                ],
-            ),
-            (
-                section: 0,
-                role: Bass,
-                layer: 1,
-                variants: [
-                    (
-                        seed: 1455448560,
-                        score: 1.0,
-                        cell: (1, 0),
-                    ),
-                ],
-            ),
-            (
-                section: 0,
-                role: Bass,
-                layer: 2,
-                variants: [
-                    (
-                        seed: 3815229274,
-                        score: 1.0,
-                        cell: (2, 0),
-                    ),
-                ],
-            ),
-            (
-                section: 0,
-                role: Comp,
-                layer: 1,
-                variants: [
-                    (
-                        seed: 2416813871,
-                        score: 1.0,
-                        cell: (0, 0),
-                    ),
-                    (
-                        seed: 467219431,
-                        score: 0.9861111,
-                        cell: (0, 1),
-                    ),
-                ],
-            ),
-            (
-                section: 0,
-                role: Comp,
-                layer: 2,
-                variants: [
-                    (
-                        seed: 1357648568,
-                        score: 1.0,
-                        cell: (0, 0),
-                    ),
-                    (
-                        seed: 2817151154,
-                        score: 1.0,
-                        cell: (0, 1),
-                    ),
-                ],
-            ),
-            (
-                section: 0,
-                role: Drums,
-                layer: 0,
-                variants: [
-                    (
-                        seed: 1381166739,
-                        score: 1.0,
-                        cell: (2, 0),
-                    ),
-                ],
-            ),
-            (
-                section: 0,
-                role: Drums,
-                layer: 1,
-                variants: [
-                    (
-                        seed: 3981330677,
-                        score: 1.0,
-                        cell: (2, 0),
-                    ),
-                ],
-            ),
-            (
-                section: 0,
-                role: Drums,
-                layer: 2,
-                variants: [
-                    (
-                        seed: 148161289,
-                        score: 1.0,
-                        cell: (2, 0),
-                    ),
-                ],
-            ),
-            (
-                section: 0,
-                role: Lead,
-                layer: 2,
-                variants: [
-                    (
-                        seed: 1356058417,
-                        score: 1.0,
-                        cell: (1, 0),
-                    ),
-                    (
-                        seed: 4065599367,
-                        score: 1.0,
-                        cell: (1, 1),
-                    ),
-                    (
-                        seed: 4273027066,
-                        score: 1.0,
-                        cell: (0, 0),
-                    ),
-                ],
-            ),
-            (
-                section: 1,
-                role: Bass,
-                layer: 0,
-                variants: [
-                    (
-                        seed: 2642879346,
-                        score: 1.0,
-                        cell: (0, 0),
-                    ),
-                ],
-            ),
-            (
-                section: 1,
-                role: Bass,
-                layer: 1,
-                variants: [
-                    (
-                        seed: 1614782556,
-                        score: 1.0,
-                        cell: (1, 0),
-                    ),
-                ],
-            ),
-            (
-                section: 1,
-                role: Bass,
-                layer: 2,
-                variants: [
-                    (
-                        seed: 621062351,
-                        score: 1.0,
-                        cell: (2, 0),
-                    ),
-                ],
-            ),
-            (
-                section: 1,
-                role: Comp,
-                layer: 1,
-                variants: [
-                    (
-                        seed: 3238527695,
-                        score: 1.0,
-                        cell: (0, 0),
-                    ),
-                ],
-            ),
-            (
-                section: 1,
-                role: Comp,
-                layer: 2,
-                variants: [
-                    (
-                        seed: 272084590,
-                        score: 1.0,
-                        cell: (0, 0),
-                    ),
-                    (
-                        seed: 4270436192,
-                        score: 1.0,
-                        cell: (0, 1),
-                    ),
-                    (
-                        seed: 3057669833,
-                        score: 0.9974748,
-                        cell: (1, 1),
-                    ),
-                ],
-            ),
-            (
-                section: 1,
-                role: Drums,
-                layer: 0,
-                variants: [
-                    (
-                        seed: 2184992439,
-                        score: 1.0,
-                        cell: (2, 0),
-                    ),
-                ],
-            ),
-            (
-                section: 1,
-                role: Drums,
-                layer: 1,
-                variants: [
-                    (
-                        seed: 3178504368,
-                        score: 1.0,
-                        cell: (2, 0),
-                    ),
-                ],
-            ),
-            (
-                section: 1,
-                role: Drums,
-                layer: 2,
-                variants: [
-                    (
-                        seed: 1208975327,
-                        score: 1.0,
-                        cell: (2, 0),
-                    ),
-                ],
-            ),
-            (
-                section: 1,
-                role: Lead,
-                layer: 2,
-                variants: [
-                    (
-                        seed: 429866852,
-                        score: 1.0,
-                        cell: (0, 1),
-                    ),
-                    (
-                        seed: 1500947766,
-                        score: 1.0,
-                        cell: (1, 1),
-                    ),
-                    (
-                        seed: 3144118360,
-                        score: 1.0,
-                        cell: (1, 0),
-                    ),
-                ],
-            ),
-        ],
-        stinger_seed: 1561297033,
-    ),
-    (
-        style: "forest",
-        seed: 3711782945,
-        cell: (2, "8+8:maj7#11"),
-        bpm: 149.60693,
-        key: "G",
-        minor: false,
-        form: [
-            "A",
-            "A",
-            "B",
-            "A",
-        ],
-        score: 1.0,
-        parts: [
-            (
-                section: 0,
-                role: Bass,
-                layer: 0,
-                variants: [
-                    (
-                        seed: 3425184885,
-                        score: 1.0,
-                        cell: (0, 0),
-                    ),
-                ],
-            ),
-            (
-                section: 0,
-                role: Bass,
-                layer: 1,
-                variants: [
-                    (
-                        seed: 2656871463,
-                        score: 1.0,
-                        cell: (1, 0),
-                    ),
-                ],
-            ),
-            (
-                section: 0,
-                role: Bass,
-                layer: 2,
-                variants: [
-                    (
-                        seed: 2233958718,
-                        score: 1.0,
-                        cell: (2, 0),
-                    ),
-                ],
-            ),
-            (
-                section: 0,
-                role: Comp,
-                layer: 1,
-                variants: [
-                    (
-                        seed: 571696935,
-                        score: 1.0,
-                        cell: (0, 0),
-                    ),
-                ],
-            ),
-            (
-                section: 0,
-                role: Comp,
-                layer: 2,
-                variants: [
-                    (
-                        seed: 1168837023,
-                        score: 1.0,
-                        cell: (0, 1),
-                    ),
-                    (
-                        seed: 1548238073,
-                        score: 1.0,
-                        cell: (0, 0),
-                    ),
-                ],
-            ),
-            (
-                section: 0,
-                role: Drums,
-                layer: 0,
-                variants: [
-                    (
-                        seed: 3110290140,
-                        score: 1.0,
-                        cell: (2, 0),
-                    ),
-                ],
-            ),
-            (
-                section: 0,
-                role: Drums,
-                layer: 1,
-                variants: [
-                    (
-                        seed: 3683098129,
-                        score: 1.0,
-                        cell: (2, 0),
-                    ),
-                ],
-            ),
-            (
-                section: 0,
-                role: Drums,
-                layer: 2,
-                variants: [
-                    (
-                        seed: 3385843935,
-                        score: 1.0,
-                        cell: (2, 0),
-                    ),
-                ],
-            ),
-            (
-                section: 0,
-                role: Lead,
-                layer: 2,
-                variants: [
-                    (
-                        seed: 1358373601,
-                        score: 1.0,
-                        cell: (1, 0),
-                    ),
-                    (
-                        seed: 1804381085,
-                        score: 1.0,
-                        cell: (0, 1),
-                    ),
-                    (
-                        seed: 1901844930,
-                        score: 1.0,
-                        cell: (1, 1),
-                    ),
-                ],
-            ),
-            (
-                section: 1,
-                role: Bass,
-                layer: 0,
-                variants: [
-                    (
-                        seed: 4001484353,
-                        score: 1.0,
-                        cell: (0, 0),
-                    ),
-                ],
-            ),
-            (
-                section: 1,
-                role: Bass,
-                layer: 1,
-                variants: [
-                    (
-                        seed: 1541288932,
-                        score: 1.0,
-                        cell: (1, 0),
-                    ),
-                ],
-            ),
-            (
-                section: 1,
-                role: Bass,
-                layer: 2,
-                variants: [
-                    (
-                        seed: 2811126538,
-                        score: 1.0,
-                        cell: (2, 0),
-                    ),
-                ],
-            ),
-            (
-                section: 1,
-                role: Comp,
-                layer: 1,
-                variants: [
-                    (
-                        seed: 666772198,
-                        score: 1.0,
-                        cell: (0, 0),
-                    ),
-                ],
-            ),
-            (
-                section: 1,
-                role: Comp,
-                layer: 2,
-                variants: [
-                    (
-                        seed: 1508211000,
-                        score: 1.0,
-                        cell: (0, 0),
-                    ),
-                    (
-                        seed: 3983466992,
-                        score: 1.0,
-                        cell: (0, 1),
-                    ),
-                ],
-            ),
-            (
-                section: 1,
-                role: Drums,
-                layer: 0,
-                variants: [
-                    (
-                        seed: 1435975490,
-                        score: 1.0,
-                        cell: (2, 0),
-                    ),
-                ],
-            ),
-            (
-                section: 1,
-                role: Drums,
-                layer: 1,
-                variants: [
-                    (
-                        seed: 298665989,
-                        score: 1.0,
-                        cell: (2, 0),
-                    ),
-                ],
-            ),
-            (
-                section: 1,
-                role: Drums,
-                layer: 2,
-                variants: [
-                    (
-                        seed: 974260229,
-                        score: 1.0,
-                        cell: (2, 0),
-                    ),
-                ],
-            ),
-            (
-                section: 1,
-                role: Lead,
-                layer: 2,
-                variants: [
-                    (
-                        seed: 1084142820,
-                        score: 1.0,
-                        cell: (1, 1),
-                    ),
-                    (
-                        seed: 2094657486,
-                        score: 1.0,
-                        cell: (1, 0),
-                    ),
-                    (
-                        seed: 2749065981,
-                        score: 1.0,
-                        cell: (0, 1),
-                    ),
-                ],
-            ),
-        ],
-        stinger_seed: 3206096408,
     ),
 ]

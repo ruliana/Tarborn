@@ -6,6 +6,7 @@
 //! the fragment is played, so the same notes can swing harder or softer per
 //! style and tempo.
 
+use crate::theory::{Chord, Mode, Scale};
 use serde::{Deserialize, Serialize};
 
 /// What a fragment plays in the band. The director layers fragments by role.
@@ -66,7 +67,33 @@ pub struct Fragment {
     pub bars: u32,
     /// Beats per bar.
     pub beats_per_bar: u32,
+    /// The style file it was generated for ("industrial", "forest").
+    pub style: String,
+    /// The harmony underneath, so parts generated apart still fit and the
+    /// metrics can judge notes against their chord.
+    pub chords: Vec<ChordSpan>,
     pub notes: Vec<Note>,
+}
+
+/// A chord over a stretch of a fragment, with the scale it implies (the
+/// chord's own chord-scale, or a mode held for a modal vamp).
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
+pub struct ChordSpan {
+    /// Start and length in beats.
+    pub start: f32,
+    pub length: f32,
+    pub chord: Chord,
+    pub mode: Mode,
+}
+
+impl ChordSpan {
+    pub fn scale(&self) -> Scale {
+        Scale::new(self.chord.root, self.mode)
+    }
+
+    pub fn covers(&self, beat: f32) -> bool {
+        beat >= self.start && beat < self.start + self.length
+    }
 }
 
 impl Default for Fragment {
@@ -77,6 +104,8 @@ impl Default for Fragment {
             section: String::from("A"),
             bars: 1,
             beats_per_bar: 4,
+            style: String::new(),
+            chords: Vec::new(),
             notes: Vec::new(),
         }
     }
@@ -86,6 +115,11 @@ impl Fragment {
     /// Length in beats.
     pub fn beats(&self) -> f32 {
         (self.bars * self.beats_per_bar) as f32
+    }
+
+    /// The chord sounding at `beat`.
+    pub fn chord_at(&self, beat: f32) -> Option<&ChordSpan> {
+        self.chords.iter().find(|c| c.covers(beat))
     }
 }
 

@@ -1,0 +1,63 @@
+// Forest stage: modal jazz with brushes. Read by the music grammar
+// (tarborn_music::style); every value is a starting point for the search.
+// Per-layer lists are indexed by intensity layer, 0 the calmest; a short
+// list repeats its last entry.
+(
+    name: "forest",
+    tempo: (110.0, 150.0),
+    beats_per_bar: 4,
+    // Loose: 0.67 at 110 BPM easing to 0.62 at 150.
+    swing: (slow_bpm: 110.0, slow_ratio: 0.67, fast_bpm: 150.0, fast_ratio: 0.62),
+    layers: 3,
+    keys: ["D", "E", "A", "G", "C", "F"],
+    harmony: Modal((
+        modes: [(Dorian, 3.0), (Aeolian, 2.0), (Lydian, 1.0)],
+        vamp_bars: [8, 16],
+        // The bridge shifts the mode up a half step (So What).
+        bridge_bars: [8],
+        bridge_shift: 1,
+    )),
+    bass: (
+        patch: "bass",
+        range: (28, 55),
+        // Calm: a pedal tone; then two-feel; walking when intense.
+        feel: [Pedal, TwoFeel, Walking],
+        chromatic_approach: 0.3,
+        ghost: 0.05,
+        max_leap: 9,
+        accent: 0.85,
+        velocity: 0.7,
+        ghost_velocity: 0.3,
+    ),
+    comp: (
+        patches: [[], ["piano"], ["piano", "marimba"]],
+        voicings: [Quartal, OpenFifths],
+        rules: (range: (50, 79), low_limit: 52, low_interval: 5),
+        hits: [(0, 0), (0, 1), (1, 2)],
+        offbeat_weight: 1.5,
+        length: (0.5, 2.0),
+        velocity: (0.4, 0.65),
+    ),
+    drums: (
+        ride: "ride",
+        hat: "hat",
+        brushes: "brushes",
+        ride_skip: [0.3, 0.5, 0.7],
+        hat_on: [false, false, true],
+        brush: [0.8, 0.9, 1.0],
+        ride_velocity: (0.35, 0.5),
+        hat_velocity: 0.45,
+        brush_velocity: (0.35, 0.55),
+    ),
+    lead: (
+        patch: "marimba",
+        range: (60, 84),
+        density: [0.0, 0.0, 0.5],
+        motif_beats: [2, 4],
+        fill: 0.5,
+        chromatic: 0.1,
+        max_leap: 7,
+        velocity: (0.5, 0.75),
+    ),
+    stinger: (bars: 2, patches: ["piano", "marimba"]),
+)

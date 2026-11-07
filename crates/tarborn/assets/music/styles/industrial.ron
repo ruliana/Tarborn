@@ -1,0 +1,69 @@
+// Industrial stage: fast hard bop. Read by the music grammar
+// (tarborn_music::style); every value is a starting point for the search.
+// Per-layer lists are indexed by intensity layer, 0 the calmest; a short
+// list repeats its last entry.
+(
+    name: "industrial",
+    tempo: (200.0, 260.0),
+    beats_per_bar: 4,
+    // Tight at speed: 0.62 at 200 BPM easing to 0.58 at 260.
+    swing: (slow_bpm: 200.0, slow_ratio: 0.62, fast_bpm: 260.0, fast_ratio: 0.58),
+    layers: 3,
+    keys: ["C", "F", "Bb", "Eb", "G", "D", "Ab"],
+    harmony: Functional((
+        minor: 0.7,
+        blues_weight: 1.0,
+        aaba_weight: 1.0,
+        tritone_sub: 0.3,
+        altered: 0.5,
+        fast_ii_v: 0.4,
+        secondary: 0.3,
+        // Bridge key in semitones above home, with weights: up a fourth
+        // (the usual), up a major third, down a whole step.
+        bridge_keys: [(5, 2.0), (4, 1.0), (-2, 1.0)],
+    )),
+    bass: (
+        patch: "bass",
+        range: (28, 55),
+        // Calm: half notes ("walking at half density"); then walking.
+        feel: [TwoFeel, Walking, Walking],
+        chromatic_approach: 0.6,
+        ghost: 0.1,
+        max_leap: 9,
+        accent: 0.95,
+        velocity: 0.8,
+        ghost_velocity: 0.35,
+    ),
+    comp: (
+        // Calm is bass and ride only; the full band adds horn stabs.
+        patches: [[], ["piano"], ["piano", "horn"]],
+        voicings: [RootlessA, RootlessB, Shell],
+        rules: (range: (50, 76), low_limit: 52, low_interval: 5),
+        hits: [(0, 0), (1, 2), (2, 3)],
+        offbeat_weight: 2.5,
+        length: (0.25, 0.75),
+        velocity: (0.55, 0.8),
+    ),
+    drums: (
+        ride: "ride",
+        hat: "hat",
+        brushes: "brushes",
+        ride_skip: [0.5, 0.8, 0.9],
+        hat_on: [false, true, true],
+        brush: [0.0],
+        ride_velocity: (0.55, 0.8),
+        hat_velocity: 0.6,
+        brush_velocity: (0.3, 0.5),
+    ),
+    lead: (
+        patch: "horn",
+        range: (58, 82),
+        density: [0.0, 0.0, 0.6],
+        motif_beats: [2, 3, 4],
+        fill: 0.6,
+        chromatic: 0.25,
+        max_leap: 7,
+        velocity: (0.6, 0.85),
+    ),
+    stinger: (bars: 2, patches: ["piano", "horn"]),
+)

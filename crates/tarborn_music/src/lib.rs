@@ -14,10 +14,13 @@
 //! and seed always produce the same samples.
 
 pub mod analysis;
+pub mod grammar;
 pub mod patches;
 pub mod render;
+pub mod rng;
 pub mod score;
 pub mod stream;
+pub mod style;
 pub mod theory;
 pub mod time;
 

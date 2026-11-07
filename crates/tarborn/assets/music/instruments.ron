@@ -1,0 +1,253 @@
+// Genomes for the music's instruments. The patches in patches.ron are
+// generated from this file; edit here, then regenerate:
+//   cargo run --release -p tarborn_music --bin patches -- [preview-dir]
+//
+// Per instrument:
+//   role                 what it is for, in words
+//   pitched true, root 69, filter_tracking 1, gate false, gain 1
+//                        copied to the patch (see patches.ron)
+//   measure_length 0.25  seconds a gated instrument is held when measured
+//   layers               one range set per synth layer (see below)
+//   targets              where the rendered root note must measure:
+//     attack   seconds from onset to 90% of peak
+//     decay    seconds from peak until it stays 30 dB down
+//     centroid spectral centroid in Hz (brightness)
+//     noisiness share of power outside the strongest tonal_bins bins:
+//              0 a few clean partials .. 1 noise
+//
+// A layer range set holds the tarborn_sfx layer fields as (min, max); a field
+// left out keeps the synth default. `waves` lists the waves to pick from.
+// freq, lowpass and highpass are ratios of the root pitch; freq_end,
+// duty_end, lowpass_end and highpass_end are ratios of their start value.
+// Ranges with a positive minimum are sampled evenly in log space.
+(
+    analysis: (
+        frame: 0.001,
+        onset_level: 0.05,
+        attack_level: 0.9,
+        decay_db: -30.0,
+        window: 4096,
+        tonal_bins: 32,
+    ),
+    search: (
+        seed: 1,
+        candidates: 400,
+        centre_weight: 0.05,
+        time_floor: 0.001,
+        sample_rate: 44100,
+    ),
+    instruments: {
+        // ---- The band -------------------------------------------------------
+        "bass": (
+            role: "upright bass: walking lines",
+            root: 36.0,
+            filter_tracking: 0.5,
+            gain: 0.9,
+            layers: [
+                // Finger pluck.
+                (waves: [Noise], freq: (30.0, 60.0), decay: (0.008, 0.025), decay_curve: (1.5, 3.0),
+                 gain: (0.1, 0.35), lowpass: (25.0, 50.0)),
+                // Body.
+                (waves: [Triangle, Saw, Square], attack: (0.002, 0.008), decay: (0.4, 1.2),
+                 decay_curve: (1.5, 3.0), duty: (0.3, 0.5), lowpass: (4.0, 12.0), lowpass_end: (0.25, 0.7),
+                 drive: (0.0, 0.6)),
+                // Sub.
+                (waves: [Sine], gain: (0.2, 0.6), attack: (0.002, 0.01), decay: (0.4, 1.2),
+                 decay_curve: (1.2, 2.5)),
+            ],
+            targets: (attack: (0.0, 0.015), decay: (0.3, 1.2), centroid: (100.0, 450.0), noisiness: (0.0, 0.15)),
+        ),
+        "ride": (
+            role: "band ride cymbal",
+            pitched: false,
+            gain: 0.35,
+            layers: [
+                // Stick ping.
+                (waves: [Square], freq: (2.0, 4.0), duty: (0.2, 0.5), decay: (0.03, 0.1),
+                 decay_curve: (1.5, 3.0), gain: (0.2, 0.5), highpass: (3.0, 6.0)),
+                // Bell.
+                (waves: [Square], freq: (5.0, 9.0), duty: (0.1, 0.4), decay: (0.2, 0.6),
+                 decay_curve: (2.0, 3.5), gain: (0.08, 0.25)),
+                // Wash.
+                (waves: [Noise], freq: (20.0, 40.0), decay: (0.6, 1.6), decay_curve: (2.0, 4.0),
+                 highpass: (8.0, 14.0), lowpass: (20.0, 30.0), resonance: (0.0, 0.5)),
+            ],
+            targets: (attack: (0.0, 0.005), decay: (0.4, 1.6), centroid: (4000.0, 9000.0), noisiness: (0.2, 0.9)),
+        ),
+        "hat": (
+            role: "band hi-hat, foot chick on 2 and 4",
+            pitched: false,
+            gain: 0.3,
+            layers: [
+                (waves: [Noise], freq: (20.0, 40.0), decay: (0.02, 0.08), decay_curve: (1.5, 3.0),
+                 highpass: (12.0, 20.0), resonance: (0.0, 0.4)),
+                (waves: [Square], freq: (7.0, 12.0), duty: (0.1, 0.4), decay: (0.01, 0.04), gain: (0.05, 0.2)),
+            ],
+            targets: (attack: (0.0, 0.004), decay: (0.01, 0.08), centroid: (6000.0, 12000.0), noisiness: (0.3, 1.0)),
+        ),
+        "brushes": (
+            role: "brush swish on the snare",
+            pitched: false,
+            gain: 0.4,
+            layers: [
+                (waves: [Noise], freq: (8.0, 30.0), attack: (0.02, 0.08), decay: (0.08, 0.3),
+                 decay_curve: (0.8, 2.0), highpass: (2.0, 6.0), lowpass: (10.0, 20.0)),
+            ],
+            targets: (attack: (0.01, 0.08), decay: (0.05, 0.35), centroid: (2000.0, 6000.0), noisiness: (0.3, 1.0)),
+        ),
+        "piano": (
+            role: "comping piano",
+            root: 60.0,
+            filter_tracking: 0.7,
+            gain: 0.45,
+            layers: [
+                // Hammer.
+                (waves: [Noise], freq: (8.0, 20.0), decay: (0.005, 0.02), gain: (0.05, 0.2), lowpass: (8.0, 16.0)),
+                // String.
+                (waves: [Square, Saw, Triangle], duty: (0.1, 0.4), decay: (0.6, 1.8), decay_curve: (2.0, 3.5),
+                 lowpass: (6.0, 14.0), lowpass_end: (0.2, 0.5)),
+                // Detuned unison string.
+                (waves: [Square, Saw, Triangle], freq: (1.002, 1.006), duty: (0.1, 0.4), gain: (0.2, 0.5),
+                 decay: (0.6, 1.8), decay_curve: (2.0, 3.5), lowpass: (6.0, 14.0), lowpass_end: (0.2, 0.5)),
+                // Octave partial.
+                (waves: [Sine], freq: (1.998, 2.004), gain: (0.15, 0.4), decay: (0.3, 1.0), decay_curve: (1.5, 3.0)),
+            ],
+            targets: (attack: (0.0, 0.01), decay: (0.4, 1.8), centroid: (350.0, 1500.0), noisiness: (0.0, 0.1)),
+        ),
+        "horn": (
+            role: "horn-like stab on offbeats (hard bop)",
+            root: 60.0,
+            filter_tracking: 0.8,
+            gate: true,
+            gain: 0.4,
+            measure_length: 0.2,
+            layers: [
+                (waves: [Saw], attack: (0.01, 0.04), decay: (0.08, 0.25), lowpass: (4.0, 10.0),
+                 lowpass_end: (1.5, 3.0), resonance: (0.1, 0.4), drive: (0.2, 0.8)),
+                (waves: [Saw, Square], freq: (1.003, 1.01), duty: (0.3, 0.5), gain: (0.3, 0.7),
+                 attack: (0.01, 0.04), decay: (0.08, 0.25), lowpass: (4.0, 10.0), lowpass_end: (1.5, 3.0)),
+            ],
+            targets: (attack: (0.008, 0.06), decay: (0.05, 0.3), centroid: (350.0, 1500.0), noisiness: (0.0, 0.1)),
+        ),
+        "marimba": (
+            role: "marimba colour (modal jazz)",
+            root: 72.0,
+            filter_tracking: 0.0,
+            gain: 0.45,
+            layers: [
+                // Mallet.
+                (waves: [Noise], freq: (4.0, 10.0), decay: (0.003, 0.012), gain: (0.05, 0.2), lowpass: (3.0, 8.0)),
+                // Fundamental.
+                (waves: [Sine], decay: (0.3, 0.8), decay_curve: (1.5, 3.0)),
+                // Fourth partial, a marimba's tuned overtone.
+                (waves: [Sine], freq: (3.8, 4.1), gain: (0.1, 0.35), decay: (0.05, 0.2), decay_curve: (1.5, 3.0)),
+            ],
+            targets: (attack: (0.0, 0.006), decay: (0.15, 0.8), centroid: (450.0, 1500.0), noisiness: (0.0, 0.1)),
+        ),
+
+        // ---- Industrial player kit: pipes and anvils ------------------------
+        "ind_kick": (
+            role: "industrial player kit: pipe kick",
+            gain: 0.9,
+            layers: [
+                (waves: [Sine], freq: (0.12, 0.2), freq_end: (0.4, 0.7), slide_time: (0.03, 0.1),
+                 decay: (0.2, 0.5), decay_curve: (1.2, 2.5), punch: (0.0, 0.5)),
+                // Pipe ring.
+                (waves: [Square], freq: (0.8, 1.6), duty: (0.1, 0.3), decay: (0.1, 0.3), gain: (0.08, 0.25),
+                 lowpass: (2.0, 5.0), resonance: (0.3, 0.7)),
+                (waves: [Noise], freq: (10.0, 30.0), decay: (0.003, 0.01), gain: (0.1, 0.3)),
+            ],
+            targets: (attack: (0.0, 0.006), decay: (0.12, 0.5), centroid: (70.0, 400.0), noisiness: (0.0, 0.3)),
+        ),
+        "ind_accent": (
+            role: "industrial player kit: anvil accent",
+            gain: 0.6,
+            layers: [
+                // Inharmonic partials ring like struck steel.
+                (waves: [Sine], freq: (2.5, 3.5), decay: (0.3, 1.0), decay_curve: (1.5, 3.0)),
+                (waves: [Sine], freq: (6.5, 8.5), decay: (0.2, 0.8), decay_curve: (1.5, 3.0), gain: (0.3, 0.7)),
+                (waves: [Sine], freq: (11.0, 14.0), decay: (0.1, 0.5), decay_curve: (1.5, 3.0), gain: (0.2, 0.5)),
+                (waves: [Noise], freq: (20.0, 40.0), decay: (0.002, 0.008), gain: (0.2, 0.5)),
+            ],
+            targets: (attack: (0.0, 0.004), decay: (0.25, 1.0), centroid: (1200.0, 4000.0), noisiness: (0.0, 0.2)),
+        ),
+        "ind_snare": (
+            role: "industrial player kit: clanky snare",
+            pitched: false,
+            gain: 0.6,
+            layers: [
+                (waves: [Noise], freq: (6.0, 15.0), decay: (0.1, 0.25), decay_curve: (1.5, 3.0),
+                 highpass: (1.0, 3.0), lowpass: (6.0, 12.0)),
+                (waves: [Square], freq: (0.4, 0.6), duty: (0.3, 0.5), decay: (0.05, 0.12), gain: (0.3, 0.6),
+                 lowpass: (2.0, 4.0)),
+                // Rattle.
+                (waves: [Square], freq: (3.0, 6.0), duty: (0.05, 0.2), decay: (0.05, 0.2), gain: (0.1, 0.4),
+                 drive: (0.3, 1.0)),
+            ],
+            targets: (attack: (0.0, 0.005), decay: (0.08, 0.3), centroid: (1500.0, 5000.0), noisiness: (0.15, 0.8)),
+        ),
+        "ind_crash": (
+            role: "industrial player kit: metal crash",
+            pitched: false,
+            gain: 0.5,
+            layers: [
+                (waves: [Noise], freq: (25.0, 40.0), decay: (1.0, 2.5), decay_curve: (1.5, 3.0),
+                 highpass: (4.0, 9.0)),
+                (waves: [Square], freq: (4.0, 6.5), duty: (0.1, 0.4), decay: (0.5, 1.5), decay_curve: (2.0, 3.5),
+                 gain: (0.05, 0.2)),
+                (waves: [Square], freq: (6.5, 9.0), duty: (0.1, 0.4), decay: (0.5, 1.5), decay_curve: (2.0, 3.5),
+                 gain: (0.05, 0.2)),
+            ],
+            targets: (attack: (0.0, 0.01), decay: (0.8, 2.5), centroid: (3000.0, 9000.0), noisiness: (0.2, 0.9)),
+        ),
+
+        // ---- Forest player kit: wood and skin -------------------------------
+        "for_kick": (
+            role: "forest player kit: hand-drum kick",
+            gain: 0.9,
+            layers: [
+                (waves: [Sine], freq: (0.15, 0.25), freq_end: (0.7, 0.9), slide_time: (0.02, 0.06),
+                 decay: (0.2, 0.45), decay_curve: (1.2, 2.5)),
+                // Skin slap.
+                (waves: [Noise], freq: (3.0, 8.0), decay: (0.01, 0.03), gain: (0.1, 0.35), lowpass: (3.0, 6.0)),
+            ],
+            targets: (attack: (0.0, 0.006), decay: (0.12, 0.45), centroid: (80.0, 350.0), noisiness: (0.0, 0.3)),
+        ),
+        "for_accent": (
+            role: "forest player kit: woodblock accent",
+            gain: 0.6,
+            layers: [
+                (waves: [Sine, Triangle], freq: (1.8, 2.8), decay: (0.03, 0.1), decay_curve: (1.5, 3.0)),
+                (waves: [Sine], freq: (4.0, 6.0), decay: (0.01, 0.04), gain: (0.2, 0.5)),
+                (waves: [Noise], freq: (10.0, 25.0), decay: (0.002, 0.006), gain: (0.1, 0.3)),
+            ],
+            targets: (attack: (0.0, 0.003), decay: (0.02, 0.12), centroid: (700.0, 2500.0), noisiness: (0.0, 0.15)),
+        ),
+        "for_rim": (
+            role: "forest player kit: rimshot",
+            pitched: false,
+            gain: 0.55,
+            layers: [
+                (waves: [Square], freq: (1.2, 2.0), duty: (0.2, 0.5), decay: (0.02, 0.06), decay_curve: (1.5, 3.0)),
+                (waves: [Noise], freq: (6.0, 14.0), decay: (0.02, 0.06), highpass: (3.0, 6.0), lowpass: (6.0, 12.0),
+                 gain: (0.3, 0.8)),
+            ],
+            targets: (attack: (0.0, 0.003), decay: (0.015, 0.1), centroid: (1500.0, 5000.0), noisiness: (0.05, 0.6)),
+        ),
+        "for_crash": (
+            role: "forest player kit: gong-like crash",
+            pitched: false,
+            gain: 0.5,
+            layers: [
+                (waves: [Sine], freq: (0.3, 0.5), attack: (0.005, 0.03), decay: (1.5, 3.0), decay_curve: (1.2, 2.5),
+                 vibrato_depth: (0.02, 0.15), vibrato_rate: (3.0, 7.0)),
+                (waves: [Sine], freq: (0.9, 1.3), attack: (0.005, 0.03), decay: (1.0, 2.5), gain: (0.3, 0.6),
+                 decay_curve: (1.5, 3.0)),
+                (waves: [Sine], freq: (1.7, 2.4), attack: (0.005, 0.03), decay: (0.8, 2.0), gain: (0.2, 0.5),
+                 decay_curve: (1.5, 3.0)),
+                (waves: [Noise], freq: (4.0, 10.0), decay: (0.8, 2.0), gain: (0.05, 0.2), lowpass: (4.0, 10.0)),
+            ],
+            targets: (attack: (0.0, 0.04), decay: (1.2, 3.0), centroid: (150.0, 900.0), noisiness: (0.0, 0.3)),
+        ),
+    },
+)

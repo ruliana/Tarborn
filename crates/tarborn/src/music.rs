@@ -16,19 +16,21 @@
 
 use bevy::audio::{AddAudioSource, ChannelCount, Decodable, SampleRate, Source};
 use bevy::prelude::*;
+use std::collections::VecDeque;
 use std::num::NonZero;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant, SystemTime};
-use tarborn_music::director::{Director, Input, Voicer};
+use tarborn_music::director::{Bar, Director, Input, Voicer};
+use tarborn_music::drummer::{Cue, Drummer, Moment};
 use tarborn_music::mood::{Mood, MoodParams, Scene};
 use tarborn_music::search::LibraryTune;
 use tarborn_music::stream::{AudioSync, LatencyMeter, Mixer, Scheduled, StreamParams};
 use tarborn_music::style::Style;
 use tarborn_music::{MusicFile, PatchBank, from_ron};
 use tarborn_sfx::soft_limit;
-use tarborn_sim::{AttackPhase, BeatClock, DT, Sim, State, TICKS_PER_SECOND};
+use tarborn_sim::{AttackPhase, BeatClock, DT, Event, HitKind, Sim, State, TICKS_PER_SECOND};
 
 /// The music file built into the game, used when the file on disk is missing.
 const BUILT_IN: &str = include_str!("../assets/music.ron");
@@ -82,8 +84,40 @@ pub struct MusicCues {
     /// How tense the moment is, followed tick by tick from the sim.
     pub mood: Mood,
     mood_params: MoodParams,
-    /// How much the player is drumming, 0 .. 1, so the band ducks (step 10).
-    pub duck: f32,
+    /// The player's moves since the music last looked: tick, move name and
+    /// strength.
+    moves: Vec<(u64, &'static str, Strength)>,
+}
+
+/// How strong a move was, as the sim reports it.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum Strength {
+    Full,
+    /// 0..1, such as a launch's charge.
+    Power(f32),
+    /// Metres per second, such as a slam's.
+    Speed(f32),
+}
+
+/// The move a sim event is, as the kits in the style files name them.
+pub fn move_of(event: &Event) -> Option<(&'static str, Strength)> {
+    Some(match *event {
+        Event::Jumped { .. } => ("jump", Strength::Full),
+        Event::Launched { power, .. } => ("launch", Strength::Power(power)),
+        Event::Lunged { .. } => ("lunge", Strength::Full),
+        Event::Slammed { speed, .. } => ("slam", Strength::Speed(speed)),
+        Event::Bounced { .. } => ("bounce", Strength::Full),
+        Event::Hit {
+            kind: HitKind::Pogo,
+            ..
+        } => ("pogo", Strength::Full),
+        Event::Hit { .. } => ("hit", Strength::Full),
+        Event::Killed { .. } => ("kill", Strength::Full),
+        Event::Grabbed { .. } => ("grab", Strength::Full),
+        Event::Thrown { speed, .. } => ("throw", Strength::Speed(speed)),
+        Event::Dodged { .. } => ("dodge", Strength::Full),
+        _ => return None,
+    })
 }
 
 /// The name a state goes by in `music.ron`'s `mood.states`.
@@ -142,8 +176,13 @@ impl MusicCues {
         }
     }
 
-    /// Call after each sim tick.
-    pub fn observe(&mut self, sim: &Sim) {
+    /// Call after each sim tick, with the tick's events.
+    pub fn observe(&mut self, sim: &Sim, events: &[Event]) {
+        for e in events {
+            if let Some((name, strength)) = move_of(e) {
+                self.moves.push((sim.tick, name, strength));
+            }
+        }
         if sim.tick < self.tick {
             self.restarted = true;
         }
@@ -314,12 +353,39 @@ fn music_file() -> PathBuf {
         .unwrap_or_else(|| PathBuf::from(concat!(env!("CARGO_MANIFEST_DIR"), "/assets/music.ron")))
 }
 
-/// The director and what voices its notes.
+/// The director, the player's drummer and what voices their notes.
 struct Band {
     director: Director,
+    drummer: Drummer,
     voicer: Voicer,
     /// Next bar to decide.
     next_bar: Option<i64>,
+    /// Recently decided bars by clock bar, for the harmony under a hit.
+    bars: VecDeque<(i64, Bar)>,
+}
+
+/// Where the music is at `tick`, from the bars the director decided.
+fn moment<'a>(
+    director: &Director,
+    bars: &'a VecDeque<(i64, Bar)>,
+    clock: &BeatClock,
+    tick: f64,
+) -> Moment<'a> {
+    let bpb = clock.beats_per_bar().max(1) as f64;
+    let beats = clock.beats_at(tick);
+    let bar = (beats / bpb).floor() as i64;
+    let in_bar = (beats - bar as f64 * bpb) as f32;
+    let from_bar_line = if in_bar > bpb as f32 / 2.0 {
+        in_bar - bpb as f32
+    } else {
+        in_bar
+    };
+    let decided = bars.iter().find(|(b, _)| *b == bar).map(|(_, b)| b);
+    Moment {
+        key: decided.map_or(director.key(), |b| b.key),
+        chord: decided.and_then(|b| b.chord_at(in_bar)).map(|c| &c.chord),
+        from_bar_line,
+    }
 }
 
 /// Reads a band data file from `assets/music/`, or the built-in copy.
@@ -358,9 +424,11 @@ impl Band {
             director.bpm()
         );
         Ok(Self {
+            drummer: Drummer::new(director.style().kit.clone()),
             director,
             voicer: Voicer::new(bank, file.render.clone(), seed),
             next_bar: None,
+            bars: VecDeque::new(),
         })
     }
 }
@@ -572,8 +640,41 @@ fn schedule_music(
     let horizon = now + p.lookahead as f64 * TICKS_PER_SECOND as f64;
     let mut notes = Vec::new();
 
-    // The band, a bar at a time.
+    // The band, a bar at a time, and the player's own drumming.
+    let moves = std::mem::take(&mut cues.moves);
     if let Some(band) = &mut music.band {
+        band.drummer.advance(time.delta_secs());
+        for (tick, name, strength) in moves {
+            let strength = match strength {
+                Strength::Full => 1.0,
+                Strength::Power(p) => p,
+                Strength::Speed(v) => v / band.drummer.kit().full_speed.max(1e-3),
+            };
+            let moment = moment(&band.director, &band.bars, &clock, tick as f64);
+            let (strike, answers) = band.drummer.hear(name, strength, moment);
+            for cue in answers {
+                match cue {
+                    Cue::Fill => band.director.request_fill(),
+                    Cue::NextSection => band.director.request_next_section(),
+                }
+            }
+            if music.muted {
+                continue;
+            }
+            let Some(strike) = strike else {
+                continue;
+            };
+            let Some((samples, gain)) =
+                band.voicer
+                    .strike(&strike.patch, strike.pitch, strike.velocity)
+            else {
+                continue;
+            };
+            if let Some(at) = music.sync.sample_for_tick(tick as f64, compensation) {
+                notes.push(Scheduled { at, samples, gain });
+            }
+        }
+        let duck = band.drummer.duck();
         if music.muted {
             band.next_bar = None;
         } else {
@@ -586,7 +687,7 @@ fn schedule_music(
             {
                 let plan = band.director.next_bar(Input {
                     intensity: cues.mood.intensity,
-                    duck: cues.duck,
+                    duck,
                 });
                 let (bpm, swing) = (band.director.bpm(), band.director.swing());
                 for note in &plan.notes {
@@ -602,6 +703,10 @@ fn schedule_music(
                             gain: voice.gain,
                         });
                     }
+                }
+                band.bars.push_back((bar, plan));
+                if band.bars.len() > 8 {
+                    band.bars.pop_front();
                 }
                 bar += 1;
             }
@@ -779,6 +884,141 @@ mod tests {
         }
     }
 
+    /// Replays a bot tape in the training chunk and feeds every event to
+    /// the built-in style's drummer, as the game does.
+    fn drum(style: &str, tape: &tarborn_pcg::Tape, ticks: u64) -> Vec<(&'static str, String)> {
+        use tarborn_pcg::{BeatParams, Chunk, ChunkParams, chunk_dir, play};
+        let chunk = Chunk::load(
+            &chunk_dir("rooms").join("training.ron"),
+            &ChunkParams::default(),
+        )
+        .expect("the training chunk loads");
+        let mut sim = chunk.sim();
+        let run = play(&mut sim, tape, ticks, &BeatParams::default());
+        let style: Style = music_data(&format!("styles/{style}.ron")).unwrap();
+        let mut drummer = Drummer::new(style.kit.clone());
+        let (key, _) = tarborn_music::theory::Pc::parse("C").unwrap();
+        let mut hits = Vec::new();
+        for (_, event) in &run.events {
+            let Some((name, _)) = move_of(event) else {
+                continue;
+            };
+            let moment = Moment {
+                key,
+                chord: None,
+                from_bar_line: 2.0,
+            };
+            if let (Some(strike), _) = drummer.hear(name, 1.0, moment) {
+                hits.push((name, strike.patch));
+            }
+            drummer.advance(DT);
+        }
+        hits
+    }
+
+    #[test]
+    fn bot_tapes_drum_on_the_right_moves() {
+        use tarborn_pcg::{Buttons, Tape};
+        let right = Buttons::dir(Vec2::X);
+        // Lunge at the grub and keep pressing Jump until it dies.
+        let fight = Tape::new()
+            .at(0, right.with_jump())
+            .at(8, right)
+            .at(13, Buttons::NONE)
+            .at(45, Buttons::NONE.with_jump())
+            .at(53, Buttons::NONE)
+            .at(65, Buttons::NONE.with_jump())
+            .at(73, Buttons::NONE);
+        for (style, kick, snare, crash) in [
+            ("industrial", "ind_kick", "ind_snare", "ind_crash"),
+            ("forest", "for_kick", "for_rim", "for_crash"),
+        ] {
+            let hits = drum(style, &fight, 300);
+            let names: Vec<&str> = hits.iter().map(|(n, _)| *n).collect();
+            for (name, patch) in &hits {
+                let expected = match *name {
+                    "jump" | "launch" | "slam" => kick,
+                    "lunge" | "hit" | "throw" => snare,
+                    "kill" => crash,
+                    _ => continue,
+                };
+                assert_eq!(patch, expected, "{style}: {name}");
+            }
+            for needed in ["lunge", "hit", "kill"] {
+                assert!(names.contains(&needed), "{style}: no {needed} in {names:?}");
+            }
+        }
+        // A slam lands on the kick.
+        let slam = Tape::new()
+            .at(60, Buttons::NONE.with_jump())
+            .at(70, Buttons::NONE)
+            .at(110, Buttons::dir(Vec2::NEG_Y).with_jump())
+            .at(120, Buttons::NONE);
+        let hits = drum("industrial", &slam, 300);
+        assert!(hits.contains(&("slam", "ind_kick".into())), "{hits:?}");
+    }
+
+    #[test]
+    fn a_drumming_player_ducks_the_band() {
+        let file: MusicFile = from_ron(BUILT_IN).unwrap();
+        let mut band = Band::new(&file, "industrial").unwrap();
+        let mut quiet = Band::new(&file, "industrial").unwrap();
+        let (key, _) = tarborn_music::theory::Pc::parse("C").unwrap();
+        for _ in 0..8 {
+            let at = Moment {
+                key,
+                chord: None,
+                from_bar_line: 2.0,
+            };
+            band.drummer.hear("hit", 1.0, at);
+            band.drummer.advance(0.1);
+        }
+        let duck = band.drummer.duck();
+        assert!(duck > 0.9, "{duck}");
+        let ride = |b: &Bar| -> f32 {
+            b.notes
+                .iter()
+                .filter(|n| n.patch == "ride")
+                .map(|n| n.velocity)
+                .sum()
+        };
+        // Same seed for both, so only the ducking differs.
+        let mut loud = 0.0;
+        let mut ducked = 0.0;
+        let mut a = Director::new(
+            band.director.style().clone(),
+            music_data("library/industrial.ron").unwrap(),
+            file.director.clone(),
+            3,
+        )
+        .unwrap();
+        let mut b = Director::new(
+            quiet.director.style().clone(),
+            music_data("library/industrial.ron").unwrap(),
+            file.director.clone(),
+            3,
+        )
+        .unwrap();
+        for _ in 0..8 {
+            loud += ride(&a.next_bar(Input {
+                intensity: 1.0,
+                duck: 0.0,
+            }));
+            ducked += ride(&b.next_bar(Input {
+                intensity: 1.0,
+                duck,
+            }));
+        }
+        quiet.drummer.advance(1.0);
+        assert_eq!(quiet.drummer.duck(), 0.0);
+        let measured = 1.0 - ducked / loud;
+        info!("band drummer ducked by {:.0}%", measured * 100.0);
+        assert!(
+            measured > 0.5 * file.director.duck_depth,
+            "ducked by {measured}"
+        );
+    }
+
     #[test]
     fn the_built_in_band_starts() {
         let file: MusicFile = from_ron(BUILT_IN).expect("music.ron parses");
@@ -799,10 +1039,10 @@ mod tests {
         for _ in 0..10 {
             sim.step(Default::default());
         }
-        cues.observe(&sim);
+        cues.observe(&sim, &[]);
         assert!(!cues.restarted);
         let fresh = Sim::training_room(Vec2::ZERO);
-        cues.observe(&fresh);
+        cues.observe(&fresh, &[]);
         assert!(cues.restarted);
     }
 

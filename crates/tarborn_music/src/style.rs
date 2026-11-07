@@ -42,6 +42,9 @@ pub struct Style {
     /// Where the metrics want each part, per role and layer.
     #[serde(default)]
     pub targets: crate::metrics::Targets,
+    /// The player's own drum kit (see [`crate::drummer`]).
+    #[serde(default)]
+    pub kit: crate::drummer::Kit,
 }
 
 /// Which harmony grammar the style uses.

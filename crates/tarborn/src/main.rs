@@ -332,7 +332,7 @@ fn tick(
         .extend(game.sim.enemies.iter().map(|e| e.position));
     music.conduct(&mut game.sim);
     let events = game.sim.step(intent);
-    music.observe(&game.sim);
+    music.observe(&game.sim, &events);
     if game.room == Room::Stage {
         signals.0.push(flow::Signal::Combo(game.sim.combo.best));
         if game.exit.is_some_and(|exit| exit.goal.reached(&game.sim)) {

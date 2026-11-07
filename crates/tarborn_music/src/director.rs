@@ -22,9 +22,10 @@
 
 use crate::render::{Patch, PatchBank, RenderSettings};
 use crate::rng::Rng;
-use crate::score::{Fragment, Note, Role};
+use crate::score::{ChordSpan, Fragment, Note, Role};
 use crate::search::{LibraryTune, Realized, realize};
 use crate::style::Style;
+use crate::theory::Pc;
 use crate::time::swing;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -56,6 +57,12 @@ pub struct DirectorParams {
     pub variant_bias: f32,
     /// How much the band drummer's velocity drops at full duck (0..1).
     pub duck_depth: f32,
+    /// The band's answer to a burst of player hits: `fill_notes` even hits
+    /// over the bar's last `fill_beats` beats, rising in velocity, on the
+    /// style's hat (or brushes, when the style brushes).
+    pub fill_beats: f32,
+    pub fill_notes: u32,
+    pub fill_velocity: [f32; 2],
 }
 
 impl Default for DirectorParams {
@@ -70,6 +77,9 @@ impl Default for DirectorParams {
             breather_bars: 4,
             variant_bias: 2.0,
             duck_depth: 0.6,
+            fill_beats: 1.0,
+            fill_notes: 3,
+            fill_velocity: [0.5, 0.9],
         }
     }
 }
@@ -96,9 +106,25 @@ pub struct Bar {
     pub layer: u8,
     /// True when a lift out of a long calm spell is playing.
     pub breather: bool,
+    /// The tune's tonic.
+    pub key: Pc,
+    /// Chords sounding in this bar, `start` relative to the bar line.
+    pub chords: Vec<ChordSpan>,
+    /// True when the band answers the player with a fill.
+    pub fill: bool,
     /// Notes starting in this bar; `start` is in straight beats from the
     /// bar line (swing is applied when voicing).
     pub notes: Vec<Note>,
+}
+
+impl Bar {
+    /// The chord at `beat` beats after the bar line.
+    pub fn chord_at(&self, beat: f32) -> Option<&ChordSpan> {
+        self.chords
+            .iter()
+            .find(|c| c.covers(beat))
+            .or(self.chords.last())
+    }
 }
 
 /// The live director for one style and one run.
@@ -127,6 +153,8 @@ pub struct Director {
     calm_bars: u32,
     breather_left: u32,
     index: u64,
+    fill_pending: bool,
+    jump_pending: bool,
 }
 
 impl Director {
@@ -172,11 +200,18 @@ impl Director {
             calm_bars: 0,
             breather_left: 0,
             index: 0,
+            fill_pending: false,
+            jump_pending: false,
             rng,
             library,
         };
         d.start_tune();
         Some(d)
+    }
+
+    /// The tonic of the tune playing.
+    pub fn key(&self) -> Pc {
+        self.current.tune.key
     }
 
     pub fn bpm(&self) -> f32 {
@@ -271,8 +306,21 @@ impl Director {
         }
     }
 
+    /// The band answers with a fill in the next bar it decides.
+    pub fn request_fill(&mut self) {
+        self.fill_pending = true;
+    }
+
+    /// The next bar decided starts the tune's next section.
+    pub fn request_next_section(&mut self) {
+        self.jump_pending = true;
+    }
+
     /// Decides the next bar. Call once per bar, at or before its bar line.
     pub fn next_bar(&mut self, input: Input) -> Bar {
+        if std::mem::take(&mut self.jump_pending) && self.bar_in_section > 0 {
+            self.end_section();
+        }
         self.update_layer(input);
         let breather = self.breather_left > 0 && self.layer == 0;
         let layer = if breather {
@@ -318,6 +366,19 @@ impl Director {
         }
         notes.sort_by(|a, b| a.start.total_cmp(&b.start));
 
+        let fill = std::mem::take(&mut self.fill_pending);
+        if fill {
+            self.add_fill(&mut notes);
+        }
+        let chords = self.current.tune.sections[section]
+            .chords
+            .iter()
+            .filter(|c| c.start < to && c.start + c.length > from)
+            .map(|c| ChordSpan {
+                start: c.start - from,
+                ..c.clone()
+            })
+            .collect();
         let bar = Bar {
             index: self.index,
             tune: self.library_seed(),
@@ -325,6 +386,9 @@ impl Director {
             bar_in_section: self.bar_in_section,
             layer,
             breather,
+            key: self.current.tune.key,
+            chords,
+            fill,
             notes,
         };
         self.advance();
@@ -335,12 +399,45 @@ impl Director {
         self.tune_seed
     }
 
+    fn add_fill(&self, notes: &mut Vec<Note>) {
+        let d = &self.style.drums;
+        let brushed = d.brush.iter().any(|&b| b > 0.0);
+        let patch = if brushed { &d.brushes } else { &d.hat };
+        let n = self.params.fill_notes.max(1);
+        let span = self
+            .params
+            .fill_beats
+            .clamp(0.0, self.beats_per_bar() as f32);
+        let start = self.beats_per_bar() as f32 - span;
+        let [lo, hi] = self.params.fill_velocity;
+        for i in 0..n {
+            let t = if n > 1 {
+                i as f32 / (n - 1) as f32
+            } else {
+                1.0
+            };
+            notes.push(Note {
+                start: start + span * i as f32 / n as f32,
+                length: span / n as f32,
+                pitch: 60,
+                velocity: lo + (hi - lo) * t,
+                patch: patch.clone(),
+            });
+        }
+        notes.sort_by(|a, b| a.start.total_cmp(&b.start));
+    }
+
     fn advance(&mut self) {
         self.index += 1;
         self.bar_in_section += 1;
         if self.bar_in_section < self.section_bars() {
             return;
         }
+        self.end_section();
+    }
+
+    /// Moves on to the start of the next section in the form.
+    fn end_section(&mut self) {
         self.bar_in_section = 0;
         self.form_at += 1;
         if self.form_at < self.current.tune.form.len() {
@@ -401,6 +498,25 @@ impl Voicer {
             self.cache.clear();
         }
         self.settings = settings;
+    }
+
+    /// Voices a player's hit, to sound at once: no swing, no jitter.
+    pub fn strike(&mut self, patch: &str, pitch: u8, velocity: f32) -> Option<(Arc<[f32]>, f32)> {
+        let s = &self.settings;
+        let p: &Patch = self.bank.patches.get(patch)?;
+        let gain =
+            velocity.clamp(0.0, 1.0).powf(s.velocity_curve.max(0.01)) * p.gain * s.master_volume;
+        let key = (patch.to_string(), pitch, 0);
+        if self.cache.len() >= self.cache_limit && !self.cache.contains_key(&key) {
+            self.cache.clear();
+        }
+        let (rate, a4) = (s.sample_rate, s.a4);
+        let samples = self
+            .cache
+            .entry(key)
+            .or_insert_with(|| p.voiced(pitch as f32, 0.0, a4).render(rate).into())
+            .clone();
+        Some((samples, gain))
     }
 
     /// Voices a note of the bar starting at `bar_beat` on the clock. None if

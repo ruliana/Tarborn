@@ -4,6 +4,7 @@
 mod audio;
 mod camera;
 mod flow;
+mod music;
 mod rooms;
 mod screens;
 mod visuals;
@@ -45,6 +46,7 @@ fn main() {
         .insert_resource(Rig(CameraRig::at(Room::Arena.spawn())))
         .init_resource::<InputLatch>()
         .add_plugins(audio::SoundPlugin)
+        .add_plugins(music::MusicPlugin)
         .add_plugins(visuals::VisualsPlugin)
         .add_plugins(screens::ScreensPlugin)
         .add_systems(Startup, spawn_camera)
@@ -284,6 +286,7 @@ fn tick(
     mut game: ResMut<Game>,
     mut latch: ResMut<InputLatch>,
     mut sound: ResMut<audio::SoundCues>,
+    mut music: ResMut<music::MusicCues>,
     flow: Res<screens::RunFlow>,
     mut signals: ResMut<screens::Signals>,
 ) {
@@ -322,7 +325,9 @@ fn tick(
     game.previous_enemies.clear();
     game.previous_enemies
         .extend(game.sim.enemies.iter().map(|e| e.position));
+    music.conduct(&mut game.sim);
     let events = game.sim.step(intent);
+    music.observe(&game.sim);
     if game.room == Room::Stage {
         signals.0.push(flow::Signal::Combo(game.sim.combo.best));
         if game.exit.is_some_and(|exit| exit.goal.reached(&game.sim)) {

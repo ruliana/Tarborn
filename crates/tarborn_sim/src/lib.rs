@@ -5,6 +5,7 @@
 //! The game crate only feeds it input and draws the result.
 
 pub mod arena;
+pub mod beat;
 pub mod blob;
 pub mod combat;
 pub mod controller;
@@ -12,6 +13,7 @@ pub mod enemy;
 pub mod level;
 
 pub use arena::{ARENA_SPAWN, Arena, Phase};
+pub use beat::{BeatClock, BeatPosition};
 pub use blob::{Blob, BlobParams, TarModes};
 pub use combat::{CombatParams, Projectile};
 pub use controller::{Controller, Event, FeelParams, HitKind, Intent};
@@ -94,6 +96,9 @@ pub struct Sim {
     pub max_health: u32,
     pub dead: bool,
     pub tick: u64,
+    /// The musical beat, counted in ticks. It keeps counting through
+    /// hitstop, so the music never stutters on a hit.
+    pub clock: BeatClock,
     /// Time left with the world frozen after a hit, so contact feels solid.
     hitstop_left: f32,
     /// Time left invulnerable after being hurt.
@@ -123,6 +128,7 @@ impl Sim {
             combat,
             dead: false,
             tick: 0,
+            clock: BeatClock::default(),
             hitstop_left: 0.0,
             hurt_left: 0.0,
             pending_jump: false,

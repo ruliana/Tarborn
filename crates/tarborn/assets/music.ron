@@ -25,4 +25,41 @@
         tail: 0.6,
         limit: true,
     ),
+
+    // The live stream in game, kept in step with the sim's beat clock.
+    stream: (
+        // Seconds ahead of the sim that notes are scheduled.
+        lookahead: 0.1,
+        // Share of the measured drift between sim and audio device closed
+        // each frame (0 never follows, 1 jumps).
+        smoothing: 0.05,
+        // Seconds of jump (pause, hitch, new room) that re-anchors at once.
+        resync_threshold: 0.1,
+        // Seconds scheduled notes play early to make up for output latency,
+        // on top of the measured device buffer when auto_compensate is on.
+        latency_compensation: 0.0,
+        auto_compensate: true,
+        // Seconds between two sample requests that ends a device burst
+        // (how the buffer is measured), and buffers assumed in flight.
+        burst_gap: 0.0005,
+        buffers_in_flight: 2.0,
+        // Seconds between "music output" latency lines in the console.
+        log_interval: 10.0,
+        max_voices: 48,
+        volume: 0.8,
+        // Seconds between checks of this file for edits.
+        reload_interval: 0.5,
+    ),
+
+    // A debug metronome on the sim's beat clock: turn it on to hear that the
+    // stream keeps time with the game. The tempo drives the beat clock until
+    // the director sets it per stage.
+    click: (
+        enabled: false,
+        bpm: 120.0,
+        beats_per_bar: 4,
+        volume: 0.5,
+        downbeat: (layers: [(wave: Sine, freq: 1760.0, decay: 0.05, decay_curve: 2.0)]),
+        beat: (layers: [(wave: Sine, freq: 880.0, decay: 0.04, decay_curve: 2.0, gain: 0.7)]),
+    ),
 )

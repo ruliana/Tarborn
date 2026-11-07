@@ -348,7 +348,7 @@ impl Library {
 }
 
 /// Above ±0.6 the signal bends smoothly toward ±1 instead of clipping.
-fn soft_limit(x: f32) -> f32 {
+pub fn soft_limit(x: f32) -> f32 {
     const KNEE: f32 = 0.6;
     let a = x.abs();
     if a <= KNEE {

@@ -1,0 +1,28 @@
+// Tarborn's music tuning. Every number that shapes the music lives here or
+// in assets/music/; nothing is tuned in code.
+//
+// To render a fragment to a WAV file outside the game:
+//   cargo run -p tarborn_music --bin render -- <fragment.ron> out.wav [seed]
+// (patches come from assets/music/patches.ron; pass --patches to override).
+(
+    // How fragments are rendered offline: previews, tests and the library.
+    // The live director (step 8) takes tempo and swing from the stage style.
+    render: (
+        sample_rate: 44100,
+        bpm: 120.0,
+        // Share of each beat taken by its first eighth; 0.5 is straight.
+        swing: 0.62,
+        // Tuning reference, Hz.
+        a4: 440.0,
+        master_volume: 0.6,
+        // Note gain = velocity ^ velocity_curve.
+        velocity_curve: 1.6,
+        // Humanisation, driven by the render seed: most a note moves early
+        // or late (beats) and how much its velocity moves (fraction).
+        timing_jitter: 0.01,
+        velocity_jitter: 0.08,
+        // Seconds rendered past the end so the last notes ring out.
+        tail: 0.6,
+        limit: true,
+    ),
+)

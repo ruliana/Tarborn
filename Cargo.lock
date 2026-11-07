@@ -4993,6 +4993,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "tarborn_music"
+version = "0.1.0"
+dependencies = [
+ "ron",
+ "serde",
+ "tarborn_sfx",
+]
+
+[[package]]
 name = "tarborn_pcg"
 version = "0.1.0"
 dependencies = [

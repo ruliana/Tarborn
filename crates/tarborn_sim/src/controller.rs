@@ -104,9 +104,12 @@ pub struct FeelParams {
     /// Touching an enemy with Grip held grabs it, from this much further
     /// than a hit reaches.
     pub grab_reach: f32,
-    /// On a surface, touching an enemy grabs it only this long after Grip
-    /// goes down. In the air, any touch with Grip held grabs.
-    pub touch_grab_window: f32,
+    /// A blob point pushed out of an enemy along a normal pointing up more
+    /// than this is standing on it: on the ground, so it can't grab.
+    pub enemy_footing_normal_y: f32,
+    /// After resting on an enemy, the blob still counts as standing on it
+    /// for this long (shrinking briefly lifts it off).
+    pub enemy_footing_memory: f32,
     /// Gripping a wall, pushing into it climbs it at this share of pushing
     /// up (and pulling away goes down). 0 reads only the stick's up and down.
     pub wall_push_climb: f32,
@@ -151,7 +154,8 @@ impl Default for FeelParams {
             grip_catch_time: 0.15,
             grip_catch_speed: 6.0,
             grab_reach: 0.15,
-            touch_grab_window: 0.2,
+            enemy_footing_normal_y: 0.5,
+            enemy_footing_memory: 0.15,
             wall_push_climb: 1.0,
             surface_memory: 0.15,
             splat_slide_keep: 0.3,
@@ -355,11 +359,6 @@ impl Controller {
     /// Grip is held: the blob is small and sticky.
     pub fn is_shrunk(&self) -> bool {
         self.shrunk.is_some()
-    }
-
-    /// Seconds since Grip went down, or infinity when it is up.
-    pub fn shrunk_for(&self) -> f32 {
-        self.shrunk.unwrap_or(f32::INFINITY)
     }
 
     /// 0 just after shrinking, 1 after a full charge.

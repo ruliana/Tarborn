@@ -66,9 +66,13 @@
     splat_max_normal_y: 0.5,
     splat_settle_time: 0.15,
 
-    // GRABBING. Touching an enemy with Grip held grabs it from this much
-    // further than a hit reaches. In the air any touch grabs; on a surface,
-    // only within touch_grab_window of Grip going down.
+    // GRABBING. Only in the air: touching an enemy while airborne with Grip
+    // held (or a lunge arriving with Grip held) grabs it, from this much
+    // further than a hit reaches. On a surface, nothing grabs. Resting on
+    // top of an enemy (pushed out of it along a normal pointing up more than
+    // enemy_footing_normal_y) counts as standing, not in the air, and
+    // keeps counting for enemy_footing_memory after (shrinking lifts it off).
     grab_reach: 0.15,
-    touch_grab_window: 0.2,
+    enemy_footing_normal_y: 0.5,
+    enemy_footing_memory: 0.15,
 )

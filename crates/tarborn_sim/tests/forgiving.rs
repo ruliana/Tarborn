@@ -175,7 +175,7 @@ fn landing_on_an_enemy_with_grip_held_grabs_it() {
 }
 
 #[test]
-fn pressing_grip_while_resting_on_an_enemy_grabs_it() {
+fn pressing_grip_while_resting_on_an_enemy_does_not_grab_it() {
     let mut sim = Sim::new(flat(), v(0.0, 3.0));
     sim.enemies.push(tough_dummy(v(0.0, 0.6)));
     let events = run(&mut sim, Intent::default(), 0.8);
@@ -186,13 +186,13 @@ fn pressing_grip_while_resting_on_an_enemy_grabs_it() {
             modes: grip(true),
             ..Default::default()
         },
-        0.2,
+        1.0,
     );
-    assert!(grabbed(&events), "{events:?}");
+    assert!(!grabbed(&events), "{events:?}");
 }
 
 #[test]
-fn pressing_grip_beside_an_enemy_on_the_ground_grabs_it() {
+fn pressing_grip_beside_an_enemy_on_the_ground_does_not_grab_it() {
     let mut sim = settled(flat(), 0.0);
     sim.enemies.push(tough_dummy(v(1.15, 0.6)));
     let events = run(
@@ -201,9 +201,9 @@ fn pressing_grip_beside_an_enemy_on_the_ground_grabs_it() {
             modes: grip(true),
             ..Default::default()
         },
-        0.2,
+        1.0,
     );
-    assert!(grabbed(&events), "{events:?}");
+    assert!(!grabbed(&events), "{events:?}");
 }
 
 #[test]

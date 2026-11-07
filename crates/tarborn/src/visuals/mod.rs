@@ -25,6 +25,7 @@ use tarborn_sim::combat::SPIT_RADIUS;
 use tarborn_sim::{AttackPhase, Enemy, EnemyKind, Event, HitKind, Sim, State};
 
 use crate::{Game, InputLatch, PIXELS_PER_METER, Room};
+pub use dressing::Dressing;
 use face::{Eye, Mood, Pose};
 use fill::Fill;
 use stains::Stains;

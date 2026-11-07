@@ -17,6 +17,7 @@ pub mod analysis;
 pub mod director;
 pub mod grammar;
 pub mod metrics;
+pub mod mood;
 pub mod patches;
 pub mod render;
 pub mod rng;
@@ -49,6 +50,8 @@ pub struct MusicFile {
     pub search: search::SearchParams,
     /// The live director.
     pub director: director::DirectorParams,
+    /// How tense the moment is, from the game.
+    pub mood: mood::MoodParams,
 }
 
 /// A metronome on the sim's beat clock, to check that the stream keeps time.

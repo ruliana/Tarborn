@@ -35,12 +35,13 @@
         ghost_velocity: 0.35,
     ),
     comp: (
-        // Calm is bass and ride only; the full band adds horn stabs.
-        patches: [[], ["piano"], ["piano", "horn"]],
+        // Calm is bass and ride only. The full band's horn plays the lead,
+        // so comping stays on piano and thins out under it.
+        patches: [[], ["piano"], ["piano"]],
         voicings: [RootlessA, RootlessB, Shell],
         smooth: 0.8,
         rules: (range: (50, 76), low_limit: 52, low_interval: 5),
-        hits: [(0, 0), (1, 2), (2, 3)],
+        hits: [(0, 0), (1, 2), (1, 2)],
         offbeat_weight: 2.5,
         length: (0.25, 0.75),
         velocity: (0.55, 0.8),
@@ -80,8 +81,8 @@
             tension: [(2.5, 4.5)],
             dissonance: [(0.1, 0.28)],
             voice_leading: [(1.0, 6.0)],
-            syncopation: [(0.0, 0.0), (0.5, 1.8), (1.0, 2.4)],
-            density: [(0.0, 0.0), (0.25, 0.5), (0.5, 0.75)],
+            syncopation: [(0.0, 0.0), (0.5, 1.8)],
+            density: [(0.0, 0.0), (0.25, 0.5)],
         ),
         drums: (
             repetition: [(0.85, 0.97)],

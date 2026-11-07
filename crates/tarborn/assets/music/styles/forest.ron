@@ -12,9 +12,10 @@
     keys: ["D", "E", "A", "G", "C", "F"],
     harmony: Modal((
         modes: [(Dorian, 3.0), (Aeolian, 2.0), (Lydian, 1.0)],
-        vamp_bars: [8, 16],
+        // Short vamps so the music moves on quickly.
+        vamp_bars: [8],
         // The bridge shifts the mode up a half step (So What).
-        bridge_bars: [8],
+        bridge_bars: [4, 8],
         bridge_shift: 1,
     )),
     bass: (
@@ -30,7 +31,7 @@
         ghost_velocity: 0.3,
     ),
     comp: (
-        patches: [[], ["piano"], ["piano", "marimba"]],
+        patches: [[], ["epiano"], ["epiano", "marimba"]],
         voicings: [Quartal, OpenFifths],
         smooth: 0.7,
         rules: (range: (50, 79), low_limit: 52, low_interval: 5),
@@ -60,7 +61,7 @@
         max_leap: 7,
         velocity: (0.5, 0.75),
     ),
-    stinger: (bars: 2, patches: ["piano", "marimba"]),
+    stinger: (bars: 2, patches: ["epiano", "marimba"]),
     // Where the metrics want each part (tarborn_music::metrics), per layer.
     // Ranges come from the grammar's own spread (see the report binary),
     // tightened toward what sounds right; a measure left out isn't scored.

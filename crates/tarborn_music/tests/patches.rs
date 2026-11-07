@@ -38,6 +38,7 @@ fn the_band_and_both_player_kits_are_there() {
         "hat",
         "brushes",
         "piano",
+        "epiano",
         "horn",
         "marimba",
         "ind_kick",

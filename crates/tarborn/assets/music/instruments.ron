@@ -114,6 +114,25 @@
             ],
             targets: (attack: (0.0, 0.01), decay: (0.4, 1.8), centroid: (350.0, 1500.0), noisiness: (0.0, 0.1)),
         ),
+        "epiano": (
+            role: "warm electric piano for modal comping (forest)",
+            root: 60.0,
+            filter_tracking: 0.5,
+            gain: 0.5,
+            layers: [
+                // Tine strike: a bright partial that dies fast.
+                (waves: [Sine], freq: (6.8, 7.2), gain: (0.06, 0.2), decay: (0.04, 0.15), decay_curve: (1.5, 3.0)),
+                // Fundamental, long and soft.
+                (waves: [Sine], attack: (0.002, 0.008), decay: (1.2, 2.5), decay_curve: (1.5, 2.5)),
+                // Detuned twin: slow beating instead of a chorus pedal.
+                (waves: [Sine], freq: (1.001, 1.004), gain: (0.3, 0.6), attack: (0.002, 0.008),
+                 decay: (1.2, 2.5), decay_curve: (1.5, 2.5)),
+                // Body: a filtered octave for warmth.
+                (waves: [Triangle], freq: (1.998, 2.004), gain: (0.1, 0.3), decay: (0.5, 1.4),
+                 decay_curve: (1.5, 3.0), lowpass: (3.0, 6.0)),
+            ],
+            targets: (attack: (0.0, 0.012), decay: (0.6, 2.5), centroid: (250.0, 1000.0), noisiness: (0.0, 0.1)),
+        ),
         "horn": (
             role: "horn-like stab on offbeats (hard bop)",
             root: 60.0,

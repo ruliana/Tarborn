@@ -110,4 +110,25 @@
         // Least score a proposal needs to enter.
         min_score: 0.8,
     ),
+
+    // The live director: what the band plays, bar by bar.
+    director: (
+        // Played until stages pick their own style (step 9).
+        style: "industrial",
+        // Intensity (0..1) at which each layer above the calmest starts.
+        layer_at: [0.3, 0.7],
+        // Bars of lower intensity before the band drops one layer.
+        fall_bars: 4,
+        // Times through the form before the next tune (least, most).
+        choruses: (2, 3),
+        // Inside a section, one part changes variant every this many bars.
+        variety_bars: 4,
+        // After this many calm bars, lift one layer for breather_bars.
+        breather_after: 16,
+        breather_bars: 4,
+        // Best variant's weight against the next best, and so on down.
+        variant_bias: 2.0,
+        // Band drummer velocity drop when the player drums the most.
+        duck_depth: 0.6,
+    ),
 )

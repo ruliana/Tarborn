@@ -1,23 +1,26 @@
-//! The Bevy side of the run loop in [`crate::flow`]: reads the screen
-//! keys, builds stages off the main thread, and draws the start, loading,
-//! transition and run-over screens over the world.
+//! The Bevy side of the run loop in [`crate::flow`]: reads the menu keys,
+//! pad and pointer, builds stages off the main thread, and draws the start,
+//! loading, pause, transition and run-over screens over the world.
 
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use bevy::prelude::*;
 use bevy::tasks::{AsyncComputeTaskPool, Task, block_on, poll_once};
-use tarborn_pcg::Goal;
 use tarborn_sim::Sim;
 
-use crate::flow::{BUILT_IN, Flow, Mode, Order, RunParams, Screen, Signal};
-use crate::{Game, Room, rooms};
+use crate::flow::{BUILT_IN, Flow, MAX_SEED, Mode, Order, RunParams, Screen, Signal};
+use crate::rooms::{self, Exit};
+use crate::{Game, Room};
 
 const PATH: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/assets/run.ron");
 /// Pale type on black, as in the Pitch look.
 const INK: Color = Color::srgb(0.92, 0.9, 0.86);
 const DIM_INK: Color = Color::srgb(0.6, 0.58, 0.55);
-/// Seeds are typed as decimal digits; longer ones stop taking digits.
-const MAX_SEED: u64 = 999_999_999_999;
+const BRIGHT_INK: Color = Color::srgb(1.0, 0.82, 0.4);
+/// The most menu lines any screen has.
+const MENU_LINES: usize = 8;
+/// How far the stick must lean to move a menu cursor.
+const STICK_STEP: f32 = 0.6;
 
 #[derive(Resource)]
 pub struct RunFlow(pub Flow);
@@ -27,16 +30,24 @@ pub struct RunFlow(pub Flow);
 pub struct Signals(pub Vec<Signal>);
 
 #[derive(Resource, Default)]
-struct Loading(Option<Task<Result<(Sim, Goal), String>>>);
+struct Loading(Option<Task<Result<(Sim, Exit), String>>>);
 
 #[derive(Component)]
 struct Overlay;
 
-#[derive(Component)]
-struct Title;
+/// The overlay's texts other than the menu lines.
+#[derive(Component, Clone, Copy, PartialEq, Eq)]
+enum Label {
+    Title,
+    /// Loading progress, run stats.
+    Lines,
+    /// What the keys do.
+    Help,
+}
 
+/// Menu line `i` of the current screen's menu.
 #[derive(Component)]
-struct Lines;
+struct MenuLine(usize);
 
 pub struct ScreensPlugin;
 
@@ -77,74 +88,100 @@ fn screen_input(
     gamepads: Query<&Gamepad>,
     flow: Res<RunFlow>,
     mut signals: ResMut<Signals>,
+    mut stick: Local<IVec2>,
 ) {
     let flow = &flow.0;
-    let jump = keys.any_just_pressed([KeyCode::Space, KeyCode::KeyJ])
-        || gamepads
-            .iter()
-            .any(|pad| pad.just_pressed(GamepadButton::South));
+    let pads = |button: GamepadButton| gamepads.iter().any(|pad| pad.just_pressed(button));
     let back = keys.just_pressed(KeyCode::Escape)
-        || gamepads
-            .iter()
-            .any(|pad| pad.just_pressed(GamepadButton::Select));
+        || pads(GamepadButton::Start)
+        || pads(GamepadButton::Select);
     if back {
         signals.0.push(Signal::Back);
     }
-    match flow.screen {
-        Screen::Start => {
-            for (key, room) in [
-                (KeyCode::F1, "training"),
-                (KeyCode::F2, "arena"),
-                (KeyCode::F3, "dressing"),
-                (KeyCode::F4, "dark"),
-            ] {
-                if keys.just_pressed(key) {
-                    signals.0.push(Signal::Room(room.to_string()));
-                }
-            }
-            let mut seed = flow.seed;
-            for (i, key) in [
-                KeyCode::Digit0,
-                KeyCode::Digit1,
-                KeyCode::Digit2,
-                KeyCode::Digit3,
-                KeyCode::Digit4,
-                KeyCode::Digit5,
-                KeyCode::Digit6,
-                KeyCode::Digit7,
-                KeyCode::Digit8,
-                KeyCode::Digit9,
-            ]
-            .into_iter()
-            .enumerate()
-            {
-                if keys.just_pressed(key) && seed <= MAX_SEED / 10 {
-                    seed = seed * 10 + i as u64;
-                }
-            }
-            if keys.just_pressed(KeyCode::Backspace) {
-                seed /= 10;
-            }
-            if keys.just_pressed(KeyCode::KeyR) {
-                seed = random_seed();
-            }
-            for pad in &gamepads {
-                if pad.just_pressed(GamepadButton::DPadUp) {
-                    seed = (seed + 1).min(MAX_SEED);
-                }
-                if pad.just_pressed(GamepadButton::DPadDown) {
-                    seed = seed.saturating_sub(1);
-                }
-            }
-            if seed != flow.seed {
-                signals.0.push(Signal::Seed(seed));
-            }
-            if jump {
-                signals.0.push(Signal::Jump);
+    if flow.menu().is_empty() {
+        return;
+    }
+    // The stick moves the cursor once each time it leans past the threshold.
+    let lean = gamepads
+        .iter()
+        .map(|pad| pad.left_stick())
+        .fold(
+            Vec2::ZERO,
+            |a, b| if b.length() > a.length() { b } else { a },
+        );
+    let now = IVec2::new(
+        (lean.x > STICK_STEP) as i32 - (lean.x < -STICK_STEP) as i32,
+        (lean.y > STICK_STEP) as i32 - (lean.y < -STICK_STEP) as i32,
+    );
+    let flick = |axis: i32, before: i32| if axis != before { axis } else { 0 };
+    let (dx, dy) = (flick(now.x, stick.x), flick(now.y, stick.y));
+    *stick = now;
+    let moves = [
+        (
+            Signal::Up,
+            [KeyCode::ArrowUp, KeyCode::KeyW],
+            GamepadButton::DPadUp,
+            dy > 0,
+        ),
+        (
+            Signal::Down,
+            [KeyCode::ArrowDown, KeyCode::KeyS],
+            GamepadButton::DPadDown,
+            dy < 0,
+        ),
+        (
+            Signal::Left,
+            [KeyCode::ArrowLeft, KeyCode::KeyA],
+            GamepadButton::DPadLeft,
+            dx < 0,
+        ),
+        (
+            Signal::Right,
+            [KeyCode::ArrowRight, KeyCode::KeyD],
+            GamepadButton::DPadRight,
+            dx > 0,
+        ),
+    ];
+    for (signal, keys_for, button, flicked) in moves {
+        if keys.any_just_pressed(keys_for) || pads(button) || flicked {
+            signals.0.push(signal);
+        }
+    }
+    if keys.any_just_pressed([
+        KeyCode::Space,
+        KeyCode::KeyJ,
+        KeyCode::Enter,
+        KeyCode::NumpadEnter,
+    ]) || pads(GamepadButton::South)
+    {
+        signals.0.push(Signal::Confirm);
+    }
+    // The seed can also be typed.
+    if flow.screen == Screen::Start {
+        let mut seed = flow.seed;
+        let digits = [
+            KeyCode::Digit0,
+            KeyCode::Digit1,
+            KeyCode::Digit2,
+            KeyCode::Digit3,
+            KeyCode::Digit4,
+            KeyCode::Digit5,
+            KeyCode::Digit6,
+            KeyCode::Digit7,
+            KeyCode::Digit8,
+            KeyCode::Digit9,
+        ];
+        for (i, key) in digits.into_iter().enumerate() {
+            if keys.just_pressed(key) && seed <= MAX_SEED / 10 {
+                seed = seed * 10 + i as u64;
             }
         }
-        Screen::RunOver if jump => signals.0.push(Signal::Jump),
-        _ => {}
+        if keys.just_pressed(KeyCode::Backspace) {
+            seed /= 10;
+        }
+        if seed != flow.seed {
+            signals.0.push(Signal::Seed(seed));
+        }
     }
 }
 
@@ -170,7 +207,8 @@ fn run_flow(
                 // Stages are placeholders for now and ignore the seed; the
                 // assembler will build them from it.
                 let task = AsyncComputeTaskPool::get().spawn(async move {
-                    let (mut sim, exit) = rooms::load_stage(&id, params.exit_depth)?;
+                    let (mut sim, exit) =
+                        rooms::load_stage(&id, params.exit_depth, params.seal_thickness)?;
                     if let Some(health) = health {
                         sim.health = health.clamp(1, sim.max_health);
                     }
@@ -179,6 +217,7 @@ fn run_flow(
                 loading.0 = Some(task);
             }
             Order::OpenRoom(id) => *game = Game::new(Room::from_id(&id)),
+            Order::RandomSeed => signals.0.push(Signal::Seed(random_seed())),
             // The telemetry hook: every screen change is logged.
             Order::Entered(screen) => info!("run: {screen:?}"),
         }
@@ -212,6 +251,10 @@ fn poll_loading(
 
 fn spawn_ui(mut commands: Commands, flow: Res<RunFlow>) {
     let p = &flow.0.params;
+    let font = |size: f32| TextFont {
+        font_size: bevy::text::FontSize::Px(size),
+        ..default()
+    };
     commands
         .spawn((
             Overlay,
@@ -229,21 +272,50 @@ fn spawn_ui(mut commands: Commands, flow: Res<RunFlow>) {
         ))
         .with_children(|root| {
             root.spawn((
-                Title,
+                Label::Title,
                 Text::new(""),
-                TextFont {
-                    font_size: bevy::text::FontSize::Px(p.title_size),
-                    ..default()
-                },
+                font(p.title_size),
                 TextColor(INK),
             ));
             root.spawn((
-                Lines,
+                Label::Lines,
                 Text::new(""),
-                TextFont {
-                    font_size: bevy::text::FontSize::Px(p.text_size),
-                    ..default()
-                },
+                font(p.text_size),
+                TextColor(DIM_INK),
+                TextLayout::justify(Justify::Center),
+            ));
+            root.spawn(Node {
+                flex_direction: FlexDirection::Column,
+                align_items: AlignItems::Center,
+                row_gap: Val::Px(p.text_size * 0.4),
+                ..default()
+            })
+            .with_children(|menu| {
+                for i in 0..MENU_LINES {
+                    menu.spawn((
+                        MenuLine(i),
+                        Text::new(""),
+                        font(p.text_size * 1.25),
+                        TextColor(DIM_INK),
+                        Node {
+                            padding: UiRect::axes(Val::Px(p.text_size), Val::Px(2.0)),
+                            ..default()
+                        },
+                    ))
+                    .observe(move |_: On<PointerMove>, mut signals: ResMut<Signals>| {
+                        signals.0.push(Signal::Hover(i));
+                    })
+                    .observe(
+                        move |_: On<PointerClick>, mut signals: ResMut<Signals>| {
+                            signals.0.push(Signal::Pick(i));
+                        },
+                    );
+                }
+            });
+            root.spawn((
+                Label::Help,
+                Text::new(""),
+                font(p.text_size * 0.75),
                 TextColor(DIM_INK),
                 TextLayout::justify(Justify::Center),
             ));
@@ -253,20 +325,15 @@ fn spawn_ui(mut commands: Commands, flow: Res<RunFlow>) {
 fn update_ui(
     flow: Res<RunFlow>,
     mut overlay: Single<&mut BackgroundColor, With<Overlay>>,
-    mut title: Single<&mut Text, (With<Title>, Without<Lines>)>,
-    mut lines: Single<&mut Text, (With<Lines>, Without<Title>)>,
+    mut labels: Query<(&Label, &mut Text), Without<MenuLine>>,
+    mut menu: Query<(&MenuLine, &mut Text, &mut TextColor, &mut Visibility), Without<Label>>,
 ) {
     let flow = &flow.0;
     let t = &flow.params.texts;
     overlay.0 = Color::BLACK.with_alpha(flow.fade());
     let (head, body) = match flow.screen {
-        Screen::Start => (
-            t.title.clone(),
-            format!(
-                "{}\n\n{} {}\n{}\n\n{}",
-                t.start, t.seed, flow.seed, t.seed_help, t.rooms
-            ),
-        ),
+        Screen::Start => (t.title.clone(), String::new()),
+        Screen::Paused => (t.paused.clone(), String::new()),
         Screen::Loading => (
             String::new(),
             format!(
@@ -282,7 +349,7 @@ fn update_ui(
             (
                 if s.won { &t.cleared } else { &t.died }.clone(),
                 format!(
-                    "{} {}\n{} {}:{:02}\n{} {}\n{} {}\n\n{}",
+                    "{} {}\n{} {}:{:02}\n{} {}\n{} {}",
                     t.seed,
                     flow.seed,
                     t.time,
@@ -292,17 +359,49 @@ fn update_ui(
                     s.cleared,
                     t.best_combo,
                     s.best_combo,
-                    t.again
                 ),
             )
         }
         Screen::Playing | Screen::Transition => (String::new(), String::new()),
     };
-    if title.0 != head {
-        title.0 = head;
+    let items = flow.menu();
+    let tip = match items.get(flow.cursor) {
+        Some(crate::flow::Item::Seed) => format!("{}\n{}", t.seed_help, t.menu_help),
+        Some(_) => t.menu_help.clone(),
+        None => String::new(),
+    };
+    for (label, mut text) in &mut labels {
+        let new = match label {
+            Label::Title => head.clone(),
+            Label::Lines => body.clone(),
+            Label::Help => tip.clone(),
+        };
+        set(&mut text, new);
     }
-    if lines.0 != body {
-        lines.0 = body;
+    for (line, mut text, mut color, mut shown) in &mut menu {
+        let Some(&item) = items.get(line.0) else {
+            shown.set_if_neq(Visibility::Hidden);
+            continue;
+        };
+        shown.set_if_neq(Visibility::Inherited);
+        let chosen = line.0 == flow.cursor;
+        let label = flow.label(item);
+        set(
+            &mut text,
+            if chosen {
+                format!("> {label} <")
+            } else {
+                label
+            },
+        );
+        color.set_if_neq(TextColor(if chosen { BRIGHT_INK } else { DIM_INK }));
+    }
+}
+
+/// Changes a text only when it differs, so Bevy doesn't re-lay it out.
+fn set(text: &mut Mut<Text>, new: String) {
+    if text.0 != new {
+        text.0 = new;
     }
 }
 

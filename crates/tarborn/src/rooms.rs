@@ -5,6 +5,7 @@
 use std::path::PathBuf;
 
 use bevy::log::warn;
+use bevy::math::Vec2;
 use tarborn_pcg::{Chunk, ChunkParams, Goal};
 use tarborn_sim::Sim;
 
@@ -57,9 +58,18 @@ pub fn load(id: &str) -> Sim {
     }
 }
 
-/// A run stage: its simulation, and the exit region (inside the last
-/// socket) that ends it. Read from `assets/chunks/stages/<id>.ron`.
-pub fn load_stage(id: &str, exit_depth: f32) -> Result<(Sim, Goal), String> {
+/// The way out of a stage.
+#[derive(Clone, Copy, Debug)]
+pub struct Exit {
+    /// Reaching this region, just inside the exit opening, ends the stage.
+    pub goal: Goal,
+    /// Unit vector pointing out of the stage through the opening.
+    pub outward: Vec2,
+}
+
+/// A run stage: its simulation, with every opening walled off, and its exit
+/// (inside the last socket). Read from `assets/chunks/stages/<id>.ron`.
+pub fn load_stage(id: &str, exit_depth: f32, seal: f32) -> Result<(Sim, Exit), String> {
     let params = params();
     let path = PathBuf::from(DIR).join(format!("chunks/stages/{id}.ron"));
     let chunk = match Chunk::load(&path, &params) {
@@ -85,7 +95,14 @@ pub fn load_stage(id: &str, exit_depth: f32) -> Result<(Sim, Goal), String> {
         contact: false,
         max_speed: f32::INFINITY,
     };
-    Ok((chunk.sim(), goal))
+    let exit = Exit {
+        goal,
+        outward: -exit.inward(),
+    };
+    // A stage on its own joins onto nothing, so its entrance is sealed. The
+    // exit is sealed too, just past the exit region, so the blob can't
+    // leave while the screen fades.
+    Ok((chunk.sealed(seal).sim(), exit))
 }
 
 #[cfg(test)]
@@ -100,6 +117,20 @@ mod tests {
             chunk
                 .validate(&params)
                 .unwrap_or_else(|e| panic!("{id}: {e}"));
+        }
+    }
+
+    #[test]
+    fn every_stage_is_walled_in_and_exits_on_the_right() {
+        for (id, text) in BUILT_IN_STAGES {
+            let chunk = Chunk::from_ron(text).unwrap();
+            let (sim, exit) = load_stage(id, 1.0, 1.0).unwrap();
+            assert_eq!(
+                sim.level.solids.len(),
+                chunk.solids.len() + chunk.sockets.len(),
+                "{id}: one plug per opening"
+            );
+            assert_eq!(exit.outward, Vec2::X, "{id}");
         }
     }
 }

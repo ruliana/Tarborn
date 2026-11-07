@@ -142,6 +142,17 @@ impl Socket {
         (mid, along + across)
     }
 
+    /// A wall just outside the opening that closes it, `thickness` metres
+    /// thick and overlapping the border that far at each end. A stage seals
+    /// the sockets nothing joins onto, so the blob can't leave the level.
+    pub fn plug(&self, bounds: (Vec2, Vec2), thickness: f32) -> Shape {
+        let (a, b) = self.ends(bounds);
+        let along = (b - a).normalize_or_zero() * thickness;
+        let out = -self.inward() * thickness;
+        let (p, q) = (a - along, b + along + out);
+        Shape::Rect(p.min(q), p.max(q))
+    }
+
     /// Unit vector pointing from the border into the chunk.
     pub fn inward(&self) -> Vec2 {
         match self.side {
@@ -421,6 +432,18 @@ impl Chunk {
         Level {
             solids: self.solids.iter().map(Shape::solid).collect(),
         }
+    }
+
+    /// This chunk with every socket closed by a [`Socket::plug`], played as a
+    /// stage on its own.
+    pub fn sealed(&self, thickness: f32) -> Chunk {
+        let mut chunk = self.clone();
+        chunk.solids.extend(
+            self.sockets
+                .iter()
+                .map(|socket| socket.plug(self.bounds, thickness)),
+        );
+        chunk
     }
 
     /// A simulation of this chunk played on its own, starting at its spawn

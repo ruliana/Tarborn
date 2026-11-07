@@ -271,3 +271,30 @@ fn a_socket_region_sits_just_inside_its_opening() {
     assert_eq!(mid, Vec2::new(9.5, 2.5));
     assert_eq!(half, Vec2::new(0.5, 1.0));
 }
+
+#[test]
+fn a_sealed_chunk_keeps_the_blob_in() {
+    let chunk = corridor();
+    assert_eq!(
+        chunk.sockets[0].plug(chunk.bounds, 1.0),
+        Shape::Rect(Vec2::new(-1.0, 0.5), Vec2::new(0.0, 4.5))
+    );
+    assert_eq!(
+        chunk.sockets[1].plug(chunk.bounds, 1.0),
+        Shape::Rect(Vec2::new(10.0, 0.5), Vec2::new(11.0, 4.5))
+    );
+    // Rolling left, out of the open entrance, for ten seconds.
+    let left = Intent {
+        roll: -1.0,
+        aim: Vec2::new(-1.0, 0.0),
+        ..Default::default()
+    };
+    let mut open = chunk.sim();
+    let mut sealed = chunk.sealed(1.0).sim();
+    for _ in 0..1200 {
+        open.step(left);
+        sealed.step(left);
+    }
+    assert!(open.blob.center().x < -1.0, "{}", open.blob.center());
+    assert!(sealed.blob.center().x > 0.0, "{}", sealed.blob.center());
+}

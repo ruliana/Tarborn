@@ -114,23 +114,30 @@ The blob flashes white while invulnerable.
 
 ### The run
 
-The game opens on the **start screen**. Jump starts a run: a short loading
-screen, then the stages one after another. Reach a stage's exit (its last
-socket) and it fades out and the next one loads; health carries over. Dying
-or clearing the last stage shows the **run-over** screen (seed, time, stages
-cleared, best combo); Jump goes back to the start.
+The game opens on the **start menu**. Every screen that waits for you is a
+menu: Up and Down (arrows, WASD, the d-pad or the stick) move the cursor,
+Jump or Enter picks, and the mouse can point and click. Start run begins a
+run: a short loading screen, then the stages one after another. Each stage
+is walled in except for its exit (its last socket), drawn as a gold frame
+with arrows sliding out through it. Reach it and the stage fades out and the
+next one loads; health carries over. Dying or clearing the last stage shows
+the **run-over** screen (seed, time, stages cleared, best combo) with Run
+again and Quit to title.
 
-On the start screen, type digits to set the run seed (Backspace erases, R
-picks a random one) so a run can be replayed. F1 to F4 open the debug rooms
-(training, arena, dressing, dark), and Esc goes back to the start screen
-from anywhere. The two stages are placeholders in
+On the start menu, the seed line takes Left and Right to step the seed,
+typed digits (Backspace erases), or Jump for a random one, so a run can be
+replayed. The menu also opens the debug rooms (training, arena, dressing,
+dark). **Esc** (or the pad's Start) pauses a stage or room: Resume, Restart
+(the run from its first stage, or the room), or Quit to title. The two
+stages are placeholders in
 [`assets/chunks/stages/`](crates/tarborn/assets/chunks/stages/) until stages
-are assembled from generated chunks. Timings, texts and the stage list are
-in [`assets/run.ron`](crates/tarborn/assets/run.ron).
+are assembled from generated chunks. Timings, texts, the exit marker, the
+seal thickness and the stage list are in
+[`assets/run.ron`](crates/tarborn/assets/run.ron).
 
 ### Rooms
 
-The **arena** (F2): five waves that mix every enemy kind, more
+The **arena**: five waves that mix every enemy kind, more
 and more. Clear a wave and the next drops in after a short break. Arena
 enemies stay dead, but two grubs are always around to throw or to get eaten
 by brutes. Kills drop tar that heals. Dying restarts the arena, and R

@@ -8,13 +8,13 @@
 
 use crate::score::{Fragment, midi_to_hz};
 use crate::time::beats_to_seconds;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use std::fmt;
 use tarborn_sfx::{Sfx, soft_limit};
 
 /// One instrument.
-#[derive(Clone, Debug, Deserialize, PartialEq)]
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
 #[serde(default, deny_unknown_fields)]
 pub struct Patch {
     /// The sound at the patch's root pitch.
@@ -81,7 +81,7 @@ impl Patch {
 }
 
 /// Named instruments, as read from a patch file.
-#[derive(Clone, Debug, Default, Deserialize, PartialEq)]
+#[derive(Clone, Debug, Default, Deserialize, Serialize, PartialEq)]
 #[serde(default, deny_unknown_fields)]
 pub struct PatchBank {
     pub patches: BTreeMap<String, Patch>,

@@ -34,6 +34,13 @@ opt-level = 3
 [profile.dev.package.tarborn_pcg]
 opt-level = 3
 
+# The music generator renders and measures thousands of candidate sounds.
+[profile.dev.package.tarborn_music]
+opt-level = 3
+
+[profile.dev.package.tarborn_sfx]
+opt-level = 3
+
 [profile.release]
 codegen-units = 1
 lto = "thin"

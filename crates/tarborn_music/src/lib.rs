@@ -13,6 +13,8 @@
 //! in code. Rendering is deterministic: the same fragment, patches, settings
 //! and seed always produce the same samples.
 
+pub mod analysis;
+pub mod patches;
 pub mod render;
 pub mod score;
 pub mod stream;

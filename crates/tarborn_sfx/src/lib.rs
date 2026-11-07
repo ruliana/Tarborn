@@ -15,7 +15,7 @@
 
 pub mod wav;
 
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use std::f32::consts::{PI, TAU};
 
@@ -23,7 +23,7 @@ use std::f32::consts::{PI, TAU};
 pub const SAMPLE_RATE: u32 = 44_100;
 
 /// The basic oscillator shape of a layer.
-#[derive(Clone, Copy, Debug, Default, Deserialize, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Default, Deserialize, Serialize, PartialEq, Eq)]
 pub enum Wave {
     #[default]
     Sine,
@@ -37,7 +37,7 @@ pub enum Wave {
 }
 
 /// One synthesized voice. Fields left out of a sound file take these defaults.
-#[derive(Clone, Debug, Deserialize, PartialEq)]
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
 #[serde(default, deny_unknown_fields)]
 pub struct Layer {
     pub wave: Wave,
@@ -238,7 +238,7 @@ impl Layer {
 
 /// A complete sound effect: layers mixed together, plus how it varies each
 /// time it plays.
-#[derive(Clone, Debug, Deserialize, PartialEq)]
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
 #[serde(default, deny_unknown_fields)]
 pub struct Sfx {
     pub layers: Vec<Layer>,

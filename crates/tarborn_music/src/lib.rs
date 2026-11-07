@@ -20,6 +20,7 @@ pub mod patches;
 pub mod render;
 pub mod rng;
 pub mod score;
+pub mod search;
 pub mod stream;
 pub mod style;
 pub mod theory;
@@ -43,6 +44,8 @@ pub struct MusicFile {
     pub click: ClickTrack,
     /// How the quality metrics are computed and weighed.
     pub metrics: metrics::MetricParams,
+    /// The offline search that fills the library.
+    pub search: search::SearchParams,
 }
 
 /// A metronome on the sim's beat clock, to check that the stream keeps time.

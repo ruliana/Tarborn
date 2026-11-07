@@ -118,7 +118,7 @@ struct Game {
     /// Just (re)started: the camera jumps to the spawn instead of gliding.
     fresh: bool,
     /// Reaching this ends a run stage.
-    exit: Option<tarborn_pcg::Goal>,
+    exit: Option<rooms::Exit>,
     /// The flow has been told the blob died or left.
     reported: bool,
 }
@@ -136,11 +136,11 @@ impl Game {
     }
 
     /// A run stage, built by the loader.
-    fn stage(sim: Sim, exit: tarborn_pcg::Goal) -> Self {
+    fn stage(sim: Sim, exit: rooms::Exit) -> Self {
         Self::with(Room::Stage, sim, Some(exit))
     }
 
-    fn with(room: Room, sim: Sim, exit: Option<tarborn_pcg::Goal>) -> Self {
+    fn with(room: Room, sim: Sim, exit: Option<rooms::Exit>) -> Self {
         Self {
             room,
             exit,
@@ -325,7 +325,7 @@ fn tick(
     let events = game.sim.step(intent);
     if game.room == Room::Stage {
         signals.0.push(flow::Signal::Combo(game.sim.combo.best));
-        if game.exit.is_some_and(|exit| exit.reached(&game.sim)) {
+        if game.exit.is_some_and(|exit| exit.goal.reached(&game.sim)) {
             game.reported = true;
             signals.0.push(flow::Signal::Exit {
                 health: game.sim.health,
@@ -497,6 +497,7 @@ fn draw(
     window: Single<&Window>,
     look: Res<Look>,
     tuning: Res<VisualTuning>,
+    flow: Res<screens::RunFlow>,
     mut gizmos: Gizmos,
 ) {
     let (camera, projection) = camera.into_inner();
@@ -516,6 +517,16 @@ fn draw(
                 .chain(std::iter::once(&first))
                 .map(|v| *v * PIXELS_PER_METER),
             ground,
+        );
+    }
+
+    if let Some(exit) = &game.exit {
+        draw_exit(
+            &mut gizmos,
+            exit,
+            &flow.0.params.exit_marker,
+            time.elapsed_secs(),
+            ink,
         );
     }
 
@@ -610,6 +621,53 @@ fn draw(
     );
     for point in &outline {
         gizmos.circle_2d(*point, 2.0, tar);
+    }
+}
+
+/// The way out of a stage: a frame around the exit region, with arrows
+/// sliding out through the opening and fading as they go.
+fn draw_exit(
+    gizmos: &mut Gizmos,
+    exit: &rooms::Exit,
+    marker: &flow::ExitMarker,
+    now: f32,
+    ink: Ink,
+) {
+    let (r, g, b) = marker.color;
+    let color = ink.apply(Color::linear_rgb(r, g, b));
+    let goal = &exit.goal;
+    // Gizmo lines are a pixel wide: thick strokes are several lines side by side.
+    let strokes = marker.strokes.max(1);
+    let step = marker.stroke / strokes as f32;
+    for k in 0..strokes {
+        let inset = Vec2::splat(k as f32 * step);
+        gizmos.rect_2d(
+            Isometry2d::from_translation(goal.at * PIXELS_PER_METER),
+            (goal.half - inset) * 2.0 * PIXELS_PER_METER,
+            color,
+        );
+    }
+    let out = exit.outward;
+    let across = Vec2::new(-out.y, out.x);
+    let width = goal.half.dot(across.abs()) * 2.0;
+    let size = marker.arrow_size * width;
+    let travel = marker.travel.max(1e-3);
+    let n = marker.arrows.max(1);
+    for i in 0..n {
+        // Evenly across the opening, each a little behind the one before.
+        let side = (i as f32 + 0.5) / n as f32 - 0.5;
+        let phase = (now * marker.speed + i as f32 * travel / n as f32) % travel;
+        let tip = goal.at + across * side * width * 0.7 + out * (phase - travel * 0.5);
+        let fade = color.with_alpha(1.0 - phase / travel);
+        for k in 0..strokes {
+            let tip = tip - out * (k as f32 * step);
+            let points = [
+                tip - out * size + across * size,
+                tip,
+                tip - out * size - across * size,
+            ];
+            gizmos.linestrip_2d(points.map(|p| p * PIXELS_PER_METER), fade);
+        }
     }
 }
 

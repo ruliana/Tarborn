@@ -1,13 +1,23 @@
-// The run loop: start screen, loading, stages, transitions, run over.
-// Times are seconds.
+// The run loop: start menu, loading, stages, pause menu, transitions, run
+// over. Times are seconds.
 (
     // The stages of a run, in order, from assets/chunks/stages/. These two
     // are placeholders until stages are assembled from the generated chunk
     // library (pipeline step 10).
     stages: ["intro", "climb"],
+    // The debug rooms on the start menu: (room id, label).
+    rooms: [
+        ("training", "Training room"),
+        ("arena", "Arena"),
+        ("dressing", "Dressing room"),
+        ("dark", "Dark room"),
+    ],
     // A stage ends when the blob's centre is this far (metres) inside its
     // exit socket, the last socket of the stage chunk.
     exit_depth: 1.0,
+    // A stage's other openings (its entrance) are closed by walls this
+    // thick, so the blob can't wander off the level.
+    seal_thickness: 1.0,
     // Carry the blob's health from one stage to the next.
     keep_health: true,
     // Fade out after reaching a stage's exit, and back in on the next.
@@ -17,25 +27,45 @@
     loading_min: 0.3,
     // Between dying and the run-over screen.
     death_delay: 1.0,
-    // The run-over screen ignores Jump this long, so a held button doesn't skip it.
+    // The run-over menu ignores Jump this long, so a held button doesn't skip it.
     run_over_min: 0.8,
     // How dark the start and run-over screens make the world behind them.
     dim: 0.93,
+    // ...and the pause menu, which leaves the stage in view.
+    pause_dim: 0.75,
     // Size of the title and of the other text, in logical pixels.
     title_size: 72.0,
     text_size: 22.0,
+    // The exit: a frame around the exit opening with arrows sliding out
+    // through it. Color is linear RGB; arrow size is a share of the
+    // opening's width; speed is metres per second, looping every travel
+    // metres. Lines are stroke metres thick, drawn as strokes thin lines.
+    exit_marker: (
+        color: (0.95, 0.75, 0.3),
+        arrows: 2,
+        arrow_size: 0.25,
+        speed: 1.0,
+        travel: 0.9,
+        stroke: 0.15,
+        strokes: 6,
+    ),
     texts: (
         title: "TARBORN",
-        start: "Jump to start",
+        start: "Start run",
         seed: "Seed",
-        seed_help: "type digits to set the seed, Backspace to erase, R for a random one",
-        rooms: "F1 training room   F2 arena   F3 dressing room   F4 dark room   Esc back here",
+        seed_help: "Left and Right step the seed, digits type it, Jump on it rolls a random one",
+        menu_help: "Up and Down choose   Jump or Enter picks   Esc pauses and goes back",
+        paused: "Paused",
+        resume: "Resume",
+        restart_run: "Restart run",
+        restart_room: "Restart room",
+        quit: "Quit to title",
         loading: "Loading",
         cleared: "Run cleared",
         died: "Run over",
         stages: "Stages cleared",
         time: "Time",
         best_combo: "Best combo",
-        again: "Jump to continue",
+        again: "Run again",
     ),
 )

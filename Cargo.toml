@@ -11,7 +11,7 @@ rust-version = "1.97.1"
 [workspace.dependencies]
 # Keep glam in lockstep with the version Bevy re-exports, so sim types are Bevy types.
 glam = "0.33"
-bevy = { version = "0.20.1", default-features = false, features = ["2d", "audio", "ui_bevy_render"] }
+bevy = { version = "0.20.1", default-features = false, features = ["2d", "audio", "ui_bevy_render", "ui_picking"] }
 tarborn_sim = { path = "crates/tarborn_sim" }
 tarborn_sfx = { path = "crates/tarborn_sfx" }
 tarborn_pcg = { path = "crates/tarborn_pcg" }

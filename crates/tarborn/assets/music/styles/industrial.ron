@@ -44,7 +44,8 @@
         hits: [(0, 0), (1, 2), (1, 2)],
         offbeat_weight: 2.5,
         length: (0.25, 0.75),
-        velocity: (0.55, 0.8),
+        // Background level: the piano sits under the bass and ride.
+        velocity: (0.35, 0.55),
     ),
     drums: (
         ride: "ride",

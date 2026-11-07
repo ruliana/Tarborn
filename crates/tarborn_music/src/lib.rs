@@ -15,6 +15,7 @@
 
 pub mod analysis;
 pub mod director;
+pub mod drummer;
 pub mod grammar;
 pub mod metrics;
 pub mod mood;

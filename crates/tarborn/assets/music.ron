@@ -130,6 +130,11 @@
         variant_bias: 2.0,
         // Band drummer velocity drop when the player drums the most.
         duck_depth: 0.6,
+        // The band's answer to a burst of player hits: fill_notes even hits
+        // over the bar's last fill_beats beats, rising in velocity.
+        fill_beats: 1.0,
+        fill_notes: 3,
+        fill_velocity: (0.5, 0.9),
     ),
 
     // How tense the moment is: the director's intensity, from the game.

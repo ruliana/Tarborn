@@ -62,6 +62,37 @@
         velocity: (0.5, 0.75),
     ),
     stinger: (bars: 2, patches: ["epiano", "marimba"]),
+    // The player's own kit: moves play these hits at once, unquantized.
+    // tune: Root sounds the tonic, ChordTone walks up the chord's tones.
+    // dynamics: how much a weak move (low launch power, slow slam) softens it.
+    kit: (
+        hits: {
+            "jump": (patch: "for_kick", velocity: 0.7, tune: Root),
+            "launch": (patch: "for_kick", velocity: 1.0, dynamics: 0.5, tune: Root),
+            "slam": (patch: "for_kick", velocity: 1.0, dynamics: 0.4, tune: Root),
+            "lunge": (patch: "for_rim", velocity: 0.7),
+            "hit": (patch: "for_rim", velocity: 0.95),
+            "throw": (patch: "for_rim", velocity: 0.85, dynamics: 0.5),
+            "bounce": (patch: "for_accent", velocity: 0.45, tune: ChordTone),
+            "pogo": (patch: "for_accent", velocity: 0.8, tune: ChordTone),
+            "grab": (patch: "for_accent", velocity: 0.6, tune: ChordTone),
+            "dodge": (patch: "for_accent", velocity: 0.55, tune: ChordTone),
+            "kill": (patch: "for_crash", velocity: 0.9),
+        },
+        register: 69,
+        // The band drummer fully ducks at duck_hits hits in duck_window s.
+        duck_window: 2.0,
+        duck_hits: 6.0,
+        // burst_hits hits within burst_window s: the band answers with a
+        // fill, at most once per fill_cooldown s.
+        burst_hits: 4,
+        burst_window: 1.0,
+        fill_cooldown: 4.0,
+        // A slam this close to a bar line (beats) moves to the next section.
+        downbeat_window: 0.25,
+        section_move: "slam",
+        full_speed: 24.0,
+    ),
     // Where the metrics want each part (tarborn_music::metrics), per layer.
     // Ranges come from the grammar's own spread (see the report binary),
     // tightened toward what sounds right; a measure left out isn't scored.

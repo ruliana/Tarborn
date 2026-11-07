@@ -70,39 +70,72 @@ pub struct Exit {
 /// A run stage: its simulation, with every opening walled off, and its exit
 /// (inside the last socket). Read from `assets/chunks/stages/<id>.ron`.
 pub fn load_stage(id: &str, exit_depth: f32, seal: f32) -> Result<(Sim, Exit), String> {
+    let (sim, exit) = load_chunk(&format!("stages/{id}"), exit_depth, seal)?;
+    let exit = exit.ok_or_else(|| format!("stage {id} has no exit socket"))?;
+    Ok((sim, exit))
+}
+
+/// Any chunk file, `assets/chunks/<path>.ron`, played on its own: its
+/// simulation with every opening walled off, and its exit (inside the last
+/// socket) if it has sockets. Built-in stages stand in for missing files.
+pub fn load_chunk(path: &str, exit_depth: f32, seal: f32) -> Result<(Sim, Option<Exit>), String> {
     let params = params();
-    let path = PathBuf::from(DIR).join(format!("chunks/stages/{id}.ron"));
-    let chunk = match Chunk::load(&path, &params) {
+    let file = PathBuf::from(DIR).join(format!("chunks/{path}.ron"));
+    let chunk = match Chunk::load(&file, &params) {
         Ok(chunk) => chunk,
         Err(e) => {
-            warn!("{e}; trying the built-in {id} stage");
-            let text = BUILT_IN_STAGES
-                .iter()
-                .find(|(name, _)| *name == id)
+            let text = path
+                .strip_prefix("stages/")
+                .and_then(|id| BUILT_IN_STAGES.iter().find(|(name, _)| *name == id))
                 .map(|(_, text)| *text)
-                .ok_or_else(|| format!("no stage {id}"))?;
+                .ok_or_else(|| e.to_string())?;
+            warn!("{e}; using the built-in {path}");
             Chunk::from_ron(text).map_err(|e| e.to_string())?
         }
     };
-    let exit = chunk
-        .sockets
-        .last()
-        .ok_or_else(|| format!("stage {id} has no exit socket"))?;
-    let (at, half) = exit.region(chunk.bounds, exit_depth);
-    let goal = Goal {
-        at,
-        half,
-        contact: false,
-        max_speed: f32::INFINITY,
-    };
-    let exit = Exit {
-        goal,
-        outward: -exit.inward(),
-    };
-    // A stage on its own joins onto nothing, so its entrance is sealed. The
+    let exit = chunk.sockets.last().map(|socket| {
+        let (at, half) = socket.region(chunk.bounds, exit_depth);
+        Exit {
+            goal: Goal {
+                at,
+                half,
+                contact: false,
+                max_speed: f32::INFINITY,
+            },
+            outward: -socket.inward(),
+        }
+    });
+    // A chunk on its own joins onto nothing, so its entrance is sealed. The
     // exit is sealed too, just past the exit region, so the blob can't
     // leave while the screen fades.
     Ok((chunk.sealed(seal).sim(), exit))
+}
+
+/// Every chunk file that can be played on its own: `assets/chunks/<set>/
+/// <id>.ron` for every set but the hand-built rooms, as `<set>/<id>`,
+/// sorted. Sets nested deeper are listed too.
+pub fn chunk_files() -> Vec<String> {
+    let root = PathBuf::from(DIR).join("chunks");
+    let mut found = Vec::new();
+    let mut dirs = vec![root.clone()];
+    while let Some(dir) = dirs.pop() {
+        let Ok(entries) = std::fs::read_dir(&dir) else {
+            continue;
+        };
+        for path in entries.flatten().map(|e| e.path()) {
+            if path.is_dir() {
+                if path != root.join("rooms") {
+                    dirs.push(path);
+                }
+            } else if path.extension().is_some_and(|e| e == "ron")
+                && let Ok(rel) = path.with_extension("").strip_prefix(&root)
+            {
+                found.push(rel.to_string_lossy().replace('\\', "/"));
+            }
+        }
+    }
+    found.sort();
+    found
 }
 
 #[cfg(test)]
@@ -132,5 +165,17 @@ mod tests {
             );
             assert_eq!(exit.outward, Vec2::X, "{id}");
         }
+    }
+
+    #[test]
+    fn the_chunk_list_has_the_stages_but_not_the_rooms() {
+        let files = chunk_files();
+        assert!(files.contains(&"stages/intro".to_string()), "{files:?}");
+        assert!(files.contains(&"stages/climb".to_string()), "{files:?}");
+        assert!(files.iter().all(|f| !f.starts_with("rooms/")), "{files:?}");
+        for file in files {
+            load_chunk(&file, 1.0, 1.0).unwrap_or_else(|e| panic!("{file}: {e}"));
+        }
+        assert!(load_chunk("stages/nowhere", 1.0, 1.0).is_err());
     }
 }

@@ -18,7 +18,7 @@ const INK: Color = Color::srgb(0.92, 0.9, 0.86);
 const DIM_INK: Color = Color::srgb(0.6, 0.58, 0.55);
 const BRIGHT_INK: Color = Color::srgb(1.0, 0.82, 0.4);
 /// The most menu lines any screen has.
-const MENU_LINES: usize = 8;
+const MENU_LINES: usize = 10;
 /// How far the stick must lean to move a menu cursor.
 const STICK_STEP: f32 = 0.6;
 
@@ -30,7 +30,10 @@ pub struct RunFlow(pub Flow);
 pub struct Signals(pub Vec<Signal>);
 
 #[derive(Resource, Default)]
-struct Loading(Option<Task<Result<(Sim, Exit), String>>>);
+struct Loading(Option<Task<Built>>);
+
+/// A stage or chunk built off the main thread, or why it couldn't be.
+type Built = Result<(Sim, Option<Exit>), String>;
 
 #[derive(Component)]
 struct Overlay;
@@ -212,10 +215,19 @@ fn run_flow(
                     if let Some(health) = health {
                         sim.health = health.clamp(1, sim.max_health);
                     }
-                    Ok((sim, exit))
+                    Ok((sim, Some(exit)))
                 });
                 loading.0 = Some(task);
             }
+            Order::LoadChunk(path) => {
+                let params = flow.0.params.clone();
+                info!("loading chunk {path}");
+                let task = AsyncComputeTaskPool::get().spawn(async move {
+                    rooms::load_chunk(&path, params.exit_depth, params.seal_thickness)
+                });
+                loading.0 = Some(task);
+            }
+            Order::ScanChunks => flow.0.chunks = rooms::chunk_files(),
             Order::OpenRoom(id) => *game = Game::new(Room::from_id(&id)),
             Order::RandomSeed => signals.0.push(Signal::Seed(random_seed())),
             // The telemetry hook: every screen change is logged.
@@ -228,7 +240,6 @@ fn poll_loading(
     mut loading: ResMut<Loading>,
     mut game: ResMut<Game>,
     mut signals: ResMut<Signals>,
-    mut flow: ResMut<RunFlow>,
 ) {
     let Some(task) = &mut loading.0 else {
         return;
@@ -243,8 +254,8 @@ fn poll_loading(
             signals.0.push(Signal::Loaded);
         }
         Err(e) => {
-            error!("can't load the stage: {e}");
-            flow.0.update(0.0, &[Signal::Back]);
+            error!("can't load: {e}");
+            signals.0.push(Signal::Failed(e));
         }
     }
 }
@@ -302,12 +313,20 @@ fn spawn_ui(mut commands: Commands, flow: Res<RunFlow>) {
                             ..default()
                         },
                     ))
-                    .observe(move |_: On<PointerMove>, mut signals: ResMut<Signals>| {
-                        signals.0.push(Signal::Hover(i));
-                    })
                     .observe(
-                        move |_: On<PointerClick>, mut signals: ResMut<Signals>| {
-                            signals.0.push(Signal::Pick(i));
+                        move |_: On<PointerMove>,
+                              flow: Res<RunFlow>,
+                              mut signals: ResMut<Signals>| {
+                            let first = flow.0.menu_first(MENU_LINES);
+                            signals.0.push(Signal::Hover(first + i));
+                        },
+                    )
+                    .observe(
+                        move |_: On<PointerClick>,
+                              flow: Res<RunFlow>,
+                              mut signals: ResMut<Signals>| {
+                            let first = flow.0.menu_first(MENU_LINES);
+                            signals.0.push(Signal::Pick(first + i));
                         },
                     );
                 }
@@ -332,16 +351,24 @@ fn update_ui(
     let t = &flow.params.texts;
     overlay.0 = Color::BLACK.with_alpha(flow.fade());
     let (head, body) = match flow.screen {
-        Screen::Start => (t.title.clone(), String::new()),
+        Screen::Start => (t.title.clone(), flow.error.clone().unwrap_or_default()),
+        Screen::Chunks => (t.chunks.clone(), flow.error.clone().unwrap_or_default()),
         Screen::Paused => (t.paused.clone(), String::new()),
         Screen::Loading => (
             String::new(),
-            format!(
-                "{} {} / {}",
-                t.loading,
-                flow.stage + 1,
-                flow.params.stages.len()
-            ),
+            match flow.mode {
+                Mode::Chunk(i) => format!(
+                    "{} {}",
+                    t.loading,
+                    flow.chunks.get(i).map_or("", String::as_str)
+                ),
+                _ => format!(
+                    "{} {} / {}",
+                    t.loading,
+                    flow.stage + 1,
+                    flow.params.stages.len()
+                ),
+            },
         ),
         Screen::RunOver => {
             let s = flow.stats;
@@ -378,20 +405,26 @@ fn update_ui(
         };
         set(&mut text, new);
     }
+    // A long menu shows the lines around the cursor, with marks for the rest.
+    let first = flow.menu_first(MENU_LINES);
+    let more_above = first > 0;
+    let more_below = first + MENU_LINES < items.len();
     for (line, mut text, mut color, mut shown) in &mut menu {
-        let Some(&item) = items.get(line.0) else {
+        let index = first + line.0;
+        let Some(&item) = items.get(index) else {
             shown.set_if_neq(Visibility::Hidden);
             continue;
         };
         shown.set_if_neq(Visibility::Inherited);
-        let chosen = line.0 == flow.cursor;
+        let chosen = index == flow.cursor;
+        let edge = (line.0 == 0 && more_above) || (line.0 == MENU_LINES - 1 && more_below);
         let label = flow.label(item);
         set(
             &mut text,
-            if chosen {
-                format!("> {label} <")
-            } else {
-                label
+            match (chosen, edge) {
+                (true, _) => format!("> {label} <"),
+                (false, true) => "...".to_string(),
+                (false, false) => label,
             },
         );
         color.set_if_neq(TextColor(if chosen { BRIGHT_INK } else { DIM_INK }));

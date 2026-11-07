@@ -127,7 +127,12 @@ again and Quit to title.
 On the start menu, the seed line takes Left and Right to step the seed,
 typed digits (Backspace erases), or Jump for a random one, so a run can be
 replayed. The menu also opens the debug rooms (training, arena, dressing,
-dark). **Esc** (or the pad's Start) pauses a stage or room: Resume, Restart
+dark), and **Play a chunk** lists every chunk file under
+[`assets/chunks/`](crates/tarborn/assets/chunks/) except the rooms, read
+fresh each time, to playtest one on its own: walled in, its last socket
+the exit. Dying replays it, the exit goes back to the list, and the pause
+menu has Restart chunk (which rereads the file, so edits show up) and Back
+to chunks. A chunk that fails to load or validate says why on the list. **Esc** (or the pad's Start) pauses a stage or room: Resume, Restart
 (the run from its first stage, or the room), or Quit to title. The two
 stages are placeholders in
 [`assets/chunks/stages/`](crates/tarborn/assets/chunks/stages/) until stages

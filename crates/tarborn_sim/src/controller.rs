@@ -96,8 +96,8 @@ pub struct FeelParams {
     pub hold_threshold: f32,
     /// A forced (scripted) dash snaps toward targets within this angle.
     pub aim_assist_angle: f32,
-    /// Grip pressed this long after a bounce undoes it: the blob is pulled
-    /// back onto the surface it bounced off, and sticks.
+    /// Grip pressed this long after a bounce off a wall or ceiling undoes it:
+    /// the blob is pulled back onto that surface, and sticks.
     pub grip_catch_time: f32,
     /// Speed toward the surface when a late Grip catches a bounce.
     pub grip_catch_speed: f32,
@@ -113,6 +113,13 @@ pub struct FeelParams {
     /// Directions keep following a wall or ceiling this long after the blob
     /// comes off it, so climbing doesn't drop when rolling lifts it a moment.
     pub surface_memory: f32,
+    /// Hitting a wall or ceiling with Grip held keeps this share of the speed
+    /// along it, and it can't spring back off. Surfaces whose normal points up
+    /// more than `splat_max_normal_y` (floors) don't splat.
+    pub splat_slide_keep: f32,
+    pub splat_max_normal_y: f32,
+    /// For this long after splatting, the soft body can't spring back off.
+    pub splat_settle_time: f32,
 }
 
 impl Default for FeelParams {
@@ -147,6 +154,9 @@ impl Default for FeelParams {
             touch_grab_window: 0.2,
             wall_push_climb: 1.0,
             surface_memory: 0.15,
+            splat_slide_keep: 0.3,
+            splat_max_normal_y: 0.5,
+            splat_settle_time: 0.15,
         }
     }
 }
@@ -181,6 +191,12 @@ pub struct Controller {
     /// The surface last gripped, and how much longer it is remembered after
     /// the blob comes off it for a moment (rolling peels it off a wall).
     gripped: Option<(Vec2, f32)>,
+    /// Gripping a wall or ceiling since the last tick (see `splat`).
+    splatted: bool,
+    /// Time left in which the blob can't spring off the surface it splatted on.
+    settle_left: f32,
+    /// Seconds since the blob last gripped a wall or ceiling.
+    off_surface_for: f32,
     /// The last bounce: the surface's normal, where the blob was, and seconds since.
     last_bounce: Option<(Vec2, Vec2, f32)>,
 }
@@ -326,6 +342,9 @@ impl Controller {
             jump_hold: 0.0,
             last_bounce: None,
             gripped: None,
+            splatted: false,
+            settle_left: 0.0,
+            off_surface_for: 0.0,
         }
     }
 
@@ -525,9 +544,14 @@ impl Controller {
             });
         }
         if let Some(normal) = bounce {
-            self.last_bounce = Some((normal, blob.center(), 0.0));
+            // Only walls and ceilings: a late Grip should catch the wall a
+            // blob bounced off, not the floor it bounced on after.
+            if normal.y < self.params.splat_max_normal_y {
+                self.last_bounce = Some((normal, blob.center(), 0.0));
+            }
             events.push(Event::Bounced { normal });
         }
+        self.splat(blob, intent.modes, dt);
 
         if self.is_lunging() {
             self.lunge_left -= dt;
@@ -574,6 +598,39 @@ impl Controller {
         let along = stick.dot(travel);
         let into = stick.dot(-normal) * travel.y * self.params.wall_push_climb;
         (along + into).clamp(-1.0, 1.0)
+    }
+
+    /// Tar hitting a wall or ceiling with Grip held splats onto it: the soft
+    /// body would otherwise spring back off or slide past before its grip
+    /// takes hold. On first contact the blob loses its speed into and most of
+    /// its speed along the surface (it keeps pressing in, to spread into a
+    /// wide grip), and for a moment after it can't spring away from it.
+    fn splat(&mut self, blob: &mut Blob, modes: TarModes, dt: f32) {
+        self.settle_left = (self.settle_left - dt).max(0.0);
+        let normal = blob
+            .grip_normal()
+            .filter(|n| modes.sticky && n.y < self.params.splat_max_normal_y)
+            .filter(|_| !self.is_lunging() && !self.slamming);
+        let Some(normal) = normal else {
+            // Crawling lifts the blob off for a moment; that is not a new hit.
+            self.off_surface_for += dt;
+            if self.off_surface_for > self.params.surface_memory {
+                self.splatted = false;
+            }
+            return;
+        };
+        self.off_surface_for = 0.0;
+        let v = blob.velocity();
+        if !self.splatted {
+            self.splatted = true;
+            self.settle_left = self.params.splat_settle_time;
+            // Keep pressing into it, so the body spreads into a wide patch.
+            let into = v.dot(normal).min(0.0);
+            let along = v - normal * v.dot(normal);
+            blob.set_velocity(normal * into + along * self.params.splat_slide_keep);
+        } else if self.settle_left > 0.0 && v.dot(normal) > 0.0 {
+            blob.set_velocity(v - normal * v.dot(normal));
+        }
     }
 
     /// Grip pressed just after a bounce: the player meant to stick, and was a

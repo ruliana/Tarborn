@@ -355,3 +355,49 @@ fn left_on_a_ceiling_goes_left() {
         sim.blob.center()
     );
 }
+
+/// A floor and a wall on the right starting at x = `wall`.
+fn wall_at(wall: f32) -> Level {
+    Level {
+        solids: vec![
+            Solid::rect(v(-100.0, -2.0), v(100.0, 0.0)),
+            Solid::rect(v(wall, 0.0), v(wall + 2.0, 30.0)),
+        ],
+    }
+}
+
+/// Bursts from the floor at the wall with Grip held all along.
+fn burst_at_wall(wall: f32, charge: f32, aim: Vec2) -> Sim {
+    let mut sim = settled(wall_at(wall), 0.0);
+    run(
+        &mut sim,
+        Intent {
+            modes: grip(true),
+            ..Default::default()
+        },
+        charge.max(DT),
+    );
+    for t in 0..ticks(2.0) {
+        sim.step(Intent {
+            aim,
+            jump_pressed: t == 0,
+            jump_held: t < 20,
+            modes: grip(true),
+            ..Default::default()
+        });
+    }
+    sim
+}
+
+#[test]
+fn bursting_into_a_wall_with_grip_held_splats_onto_it() {
+    // Both used to spring back off the wall or slide up past it.
+    for (wall, charge, aim) in [
+        (3.0, 0.6, v(1.0, 1.0).normalize()),
+        (8.0, 0.0, v(1.0, 0.0)),
+        (1.5, 0.0, v(1.0, 0.5).normalize()),
+    ] {
+        let sim = burst_at_wall(wall, charge, aim);
+        assert!(on_right_wall(&sim), "wall {wall}: {:?}", sim.blob.center());
+    }
+}

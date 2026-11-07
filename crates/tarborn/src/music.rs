@@ -553,6 +553,12 @@ fn reload_music(time: Res<Time>, mut music: ResMut<Music>, mut cues: ResMut<Musi
     }
 }
 
+/// The music style a dressing set plays: its name in lower case ("Forest"
+/// plays `styles/forest.ron`).
+pub fn style_for_set(set: &str) -> String {
+    set.trim().to_lowercase()
+}
+
 /// Each stage's dressing set names its music style: a new set, a new band.
 fn follow_stage(
     dressing: Option<Res<crate::visuals::Dressing>>,
@@ -562,7 +568,7 @@ fn follow_stage(
     let Some(dressing) = dressing else {
         return;
     };
-    let name = &dressing.set().name;
+    let name = &style_for_set(&dressing.set().name);
     if music.stage_style.as_ref() == Some(name) {
         return;
     }
@@ -1017,6 +1023,31 @@ mod tests {
             measured > 0.5 * file.director.duck_depth,
             "ducked by {measured}"
         );
+    }
+
+    #[test]
+    fn every_dressing_set_has_a_music_style() {
+        let file: MusicFile = from_ron(BUILT_IN).unwrap();
+        let dir = concat!(env!("CARGO_MANIFEST_DIR"), "/assets/dressing");
+        let mut sets = 0;
+        for entry in std::fs::read_dir(dir).unwrap() {
+            let path = entry.unwrap().path();
+            if path.extension().is_none_or(|e| e != "ron") {
+                continue;
+            }
+            let text = std::fs::read_to_string(&path).unwrap();
+            let name = text
+                .lines()
+                .find_map(|l| l.trim().strip_prefix("name:"))
+                .and_then(|v| v.split('"').nth(1))
+                .unwrap_or_else(|| panic!("{} has no name", path.display()));
+            let style = style_for_set(name);
+            let band = Band::new(&file, &style).unwrap_or_else(|e| panic!("set {name}: {e}"));
+            assert_eq!(band.director.style().name, style);
+            sets += 1;
+        }
+        assert!(sets >= 2, "found {sets} dressing sets");
+        assert_eq!(style_for_set("Industrial"), "industrial");
     }
 
     #[test]

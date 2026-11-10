@@ -158,3 +158,35 @@ fn latency_meter_estimates_from_bursts() {
     assert!((meter.latency(RATE, &p) - 0.02).abs() < 1e-6);
     assert!(meter.summary(RATE, &p).contains("20.0 ms"));
 }
+
+#[test]
+fn the_timeline_runs_through_a_frozen_sim_and_picks_it_up_again() {
+    use tarborn_music::stream::Timeline;
+    let mut t = Timeline::default();
+    // Running: frames of one tick follow the sim exactly.
+    for tick in 0..100u64 {
+        assert!(!t.advance(tick, 0.0, 1.0, 3.0));
+    }
+    assert_eq!(t.now(), 99.0);
+    // Frozen at 99 for 50 ticks of wall time: music time keeps going.
+    for _ in 0..50 {
+        assert!(!t.advance(99, 0.0, 1.0, 3.0));
+    }
+    let frozen = t.now();
+    assert!((frozen - 149.0).abs() < 1e-9, "{frozen}");
+    // Resumes at 100: re-anchored, no jump.
+    assert!(t.advance(100, 0.0, 1.0, 3.0));
+    assert!((t.now() - (frozen + 1.0)).abs() < 1e-9);
+    assert!((100.0 + t.offset() - t.now()).abs() < 1e-9);
+    // A new room restarts the sim at 0: still no jump.
+    let before = t.now();
+    assert!(t.advance(0, 0.0, 1.0, 3.0));
+    assert!((t.now() - (before + 1.0)).abs() < 1e-9);
+    // Time never runs backwards, even as the overstep wraps.
+    let mut last = t.now();
+    for i in 0..40 {
+        t.advance(i / 2, (i % 2) as f64 * 0.5, 0.5, 3.0);
+        assert!(t.now() >= last);
+        last = t.now();
+    }
+}

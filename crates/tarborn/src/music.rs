@@ -12,6 +12,12 @@
 //! click track (off by default, `click` in `assets/music.ron`) can play on
 //! top, and the measured output latency is logged.
 //!
+//! Around play, each screen has its own piece cut from the library (an
+//! intro on the start screen, a stinger between stages, a ballad fragment
+//! on death; see `tarborn_music::pieces`). The music keeps its own time
+//! ([`Timeline`]) while the sim is frozen, and a screen change hands over
+//! on a bar line with bar-by-bar fades.
+//!
 //! Every number lives in `assets/music.ron`, reloaded when it changes.
 
 use bevy::audio::{AddAudioSource, ChannelCount, Decodable, SampleRate, Source};
@@ -25,8 +31,9 @@ use std::time::{Duration, Instant, SystemTime};
 use tarborn_music::director::{Bar, Director, Input, Voicer};
 use tarborn_music::drummer::{Cue, Drummer, Moment};
 use tarborn_music::mood::{Mood, MoodParams, Scene};
+use tarborn_music::pieces::{Fade, PieceKind, PiecePlayer, piece};
 use tarborn_music::search::LibraryTune;
-use tarborn_music::stream::{AudioSync, LatencyMeter, Mixer, Scheduled, StreamParams};
+use tarborn_music::stream::{AudioSync, LatencyMeter, Mixer, Scheduled, StreamParams, Timeline};
 use tarborn_music::style::Style;
 use tarborn_music::{MusicFile, PatchBank, from_ron};
 use tarborn_sfx::soft_limit;
@@ -72,6 +79,28 @@ impl Plugin for MusicPlugin {
                 (reload_music, follow_stage, toggle_mute, schedule_music).chain(),
             );
     }
+}
+
+/// What the music plays.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Program {
+    /// The live band, following the game.
+    Band,
+    /// A screen piece.
+    Piece(PieceKind),
+}
+
+/// What each screen plays; None keeps what is playing (while loading).
+pub fn program_for(flow: &crate::flow::Flow) -> Option<Program> {
+    use crate::flow::Screen;
+    Some(match flow.screen {
+        Screen::Start | Screen::Chunks => Program::Piece(PieceKind::Intro),
+        Screen::Loading => return None,
+        Screen::Playing | Screen::Paused => Program::Band,
+        Screen::Transition => Program::Piece(PieceKind::Stinger),
+        Screen::RunOver if flow.stats.won => Program::Piece(PieceKind::Intro),
+        Screen::RunOver => Program::Piece(PieceKind::Ballad),
+    })
 }
 
 /// What the fixed tick tells the music: where the sim's clock is.
@@ -343,6 +372,14 @@ struct Music {
     downbeat: Arc<[f32]>,
     beat: Arc<[f32]>,
     band: Option<Band>,
+    /// The band's level, by band bar.
+    band_fade: Fade,
+    /// Screen pieces playing or fading out.
+    pieces: Vec<PiecePlayer>,
+    /// What the current screen plays, once one has asked.
+    program: Option<Program>,
+    /// Music time, which runs on through frozen screens.
+    timeline: Timeline,
     /// The style the stage asks for, once one has.
     stage_style: Option<String>,
     meter: LatencyMeter,
@@ -361,6 +398,8 @@ fn music_file() -> PathBuf {
 /// The director, the player's drummer and what voices their notes.
 struct Band {
     director: Director,
+    /// The style's library, for the screen pieces.
+    library: Vec<LibraryTune>,
     drummer: Drummer,
     voicer: Voicer,
     /// Next bar to decide.
@@ -422,7 +461,7 @@ impl Band {
         let library: Vec<LibraryTune> = music_data(&format!("library/{name}.ron"))?;
         let bank: PatchBank = music_data("patches.ron")?;
         let seed = run_seed();
-        let director = Director::new(style, library, file.director.clone(), seed)
+        let director = Director::new(style, library.clone(), file.director.clone(), seed)
             .ok_or_else(|| format!("the {name} music library is empty"))?;
         info!(
             "music: {name} at {:.0} BPM, run seed {seed}",
@@ -431,6 +470,7 @@ impl Band {
         Ok(Self {
             drummer: Drummer::new(director.style().kit.clone()),
             director,
+            library,
             voicer: Voicer::new(bank, file.render.clone(), seed),
             next_bar: None,
             bars: VecDeque::new(),
@@ -478,11 +518,96 @@ impl Music {
         self.set_tempo(cues);
     }
 
+    /// Hands over to `to` on the next bar line not yet scheduled: what plays
+    /// fades out over `fade_bars` while `to` fades in.
+    fn segue(&mut self, to: Program, clock: &BeatClock) {
+        let p = self.file.screens.clone();
+        let (now, offset) = (self.timeline.now(), self.timeline.offset());
+        let bpb = clock.beats_per_bar().max(1) as i64;
+        let band_bar =
+            |music_tick: f64| (clock.beats_at(music_tick - offset) / bpb as f64).ceil() as i64;
+        let first = self.program.is_none();
+        self.program = Some(to);
+        let mut at = now;
+        if let Some(bar) = self.band.as_ref().and_then(|b| b.next_bar)
+            && !self.band_fade.silent_from(bar)
+        {
+            at = at.max(clock.tick_of_beat((bar * bpb) as f64) + offset);
+        }
+        for piece in self.pieces.iter().filter(|p| !p.done()) {
+            at = at.max(piece.bar_tick(piece.next_bar()));
+        }
+        for piece in &mut self.pieces {
+            piece.fade_out(p.fade_bars);
+        }
+        let Some(band) = &mut self.band else {
+            return;
+        };
+        let bar = band.next_bar.unwrap_or_else(|| band_bar(now));
+        self.band_fade = self.band_fade.towards(bar, p.fade_bars, 0.0);
+        match to {
+            Program::Band => {
+                let bar = band_bar(at);
+                band.next_bar = Some(bar);
+                self.band_fade = if first {
+                    Fade::steady(1.0)
+                } else {
+                    Fade::steady(0.0).towards(bar, p.band_fade_in_bars, 1.0)
+                };
+            }
+            Program::Piece(kind) => {
+                match piece(band.director.style(), &band.library, kind, &p, run_seed()) {
+                    Some(piece) => self
+                        .pieces
+                        .push(PiecePlayer::new(piece, at, TICKS_PER_SECOND)),
+                    None => warn!(
+                        "music: no {kind:?} in the {} library",
+                        band.director.style().name
+                    ),
+                }
+            }
+        }
+    }
+
     fn set_tempo(&self, cues: &mut MusicCues) {
         cues.tempo = Some(match &self.band {
             Some(band) => (band.director.bpm(), band.director.beats_per_bar()),
             None => (self.file.click.bpm, self.file.click.beats_per_bar),
         });
+    }
+}
+
+impl Music {
+    /// The music for `file`, and what it shares with its stream.
+    fn new(path: PathBuf, file: MusicFile, cues: &mut MusicCues) -> (Self, Arc<Shared>) {
+        // The sample rate is fixed for the life of the stream; edits to it apply
+        // on the next launch.
+        let rate = file.render.sample_rate;
+        let shared = Arc::new(Shared::default());
+        let mut music = Music {
+            modified: modified(&path),
+            path,
+            since_check: 0.0,
+            file: MusicFile::default(),
+            shared: shared.clone(),
+            sync: AudioSync::new(rate, TICKS_PER_SECOND),
+            next_beat: None,
+            downbeat: Arc::from(Vec::new()),
+            beat: Arc::from(Vec::new()),
+            band: None,
+            band_fade: Fade::steady(0.0),
+            pieces: Vec::new(),
+            program: None,
+            timeline: Timeline::default(),
+            stage_style: None,
+            meter: LatencyMeter::default(),
+            latency: 0.0,
+            since_log: 0.0,
+            muted: false,
+        };
+        music.file.render.sample_rate = rate;
+        music.install(file, cues);
+        (music, shared)
     }
 }
 
@@ -507,29 +632,8 @@ fn start_music(
             from_ron(BUILT_IN).expect("the built-in music file parses")
         }
     };
-    // The sample rate is fixed for the life of the stream; edits to it apply
-    // on the next launch.
-    let rate = file.render.sample_rate;
-    let shared = Arc::new(Shared::default());
-    let mut music = Music {
-        modified: modified(&path),
-        path,
-        since_check: 0.0,
-        file: MusicFile::default(),
-        shared: shared.clone(),
-        sync: AudioSync::new(rate, TICKS_PER_SECOND),
-        next_beat: None,
-        downbeat: Arc::from(Vec::new()),
-        beat: Arc::from(Vec::new()),
-        band: None,
-        stage_style: None,
-        meter: LatencyMeter::default(),
-        latency: 0.0,
-        since_log: 0.0,
-        muted: false,
-    };
-    music.file.render.sample_rate = rate;
-    music.install(file, &mut cues);
+    let (music, shared) = Music::new(path, file, &mut cues);
+    let rate = music.file.render.sample_rate;
     let handle = streams.add(MusicStream { shared, rate });
     commands.spawn((AudioPlayer(handle), PlaybackSettings::ONCE));
     commands.insert_resource(music);
@@ -613,6 +717,7 @@ fn toggle_mute(keys: Res<ButtonInput<KeyCode>>, mut music: ResMut<Music>) {
 fn schedule_music(
     time: Res<Time>,
     fixed: Res<Time<Fixed>>,
+    flow: Option<Res<crate::screens::RunFlow>>,
     mut music: ResMut<Music>,
     mut cues: ResMut<MusicCues>,
 ) {
@@ -634,137 +739,231 @@ fn schedule_music(
         music.meter = LatencyMeter::default();
     }
 
-    // Follow the sim.
-    if std::mem::take(&mut cues.restarted) {
-        music.sync.reset();
-        music.next_beat = None;
-        if let Some(band) = &mut music.band {
-            band.next_bar = None;
-        }
-    }
     let taken = music.shared.taken.load(Ordering::Relaxed);
-    let now = cues.tick as f64 + fixed.overstep_fraction() as f64;
-    music.sync.observe(now, taken, &p);
-
-    let clock = cues.clock;
-    let compensation = p.latency_compensation
-        + if p.auto_compensate {
-            music.latency
-        } else {
-            0.0
-        };
-    let horizon = now + p.lookahead as f64 * TICKS_PER_SECOND as f64;
-    let mut notes = Vec::new();
-
-    // The band, a bar at a time, and the player's own drumming.
-    let moves = std::mem::take(&mut cues.moves);
-    if let Some(band) = &mut music.band {
-        band.drummer.advance(time.delta_secs());
-        for (tick, name, strength) in moves {
-            let strength = match strength {
-                Strength::Full => 1.0,
-                Strength::Power(p) => p,
-                Strength::Speed(v) => v / band.drummer.kit().full_speed.max(1e-3),
-            };
-            let moment = moment(&band.director, &band.bars, &clock, tick as f64);
-            let (strike, answers) = band.drummer.hear(name, strength, moment);
-            for cue in answers {
-                match cue {
-                    Cue::Fill => band.director.request_fill(),
-                    Cue::NextSection => band.director.request_next_section(),
-                }
-            }
-            if music.muted {
-                continue;
-            }
-            let Some(strike) = strike else {
-                continue;
-            };
-            let Some((samples, gain)) =
-                band.voicer
-                    .strike(&strike.patch, strike.pitch, strike.velocity)
-            else {
-                continue;
-            };
-            if let Some(at) = music.sync.sample_for_tick(tick as f64, compensation) {
-                notes.push(Scheduled { at, samples, gain });
-            }
-        }
-        let duck = band.drummer.duck();
-        if music.muted {
-            band.next_bar = None;
-        } else {
-            let bpb = clock.beats_per_bar().max(1) as i64;
-            // Start (or resume) on the next bar line, never in the past.
-            let first_due = (clock.beats_at(now) / bpb as f64).floor() as i64 + 1;
-            let mut bar = band.next_bar.map_or(first_due, |b| b.max(first_due));
-            while clock.tick_of_beat((bar * bpb) as f64) <= horizon
-                && music.sync.sample_for_tick(now, compensation).is_some()
-            {
-                let plan = band.director.next_bar(Input {
-                    intensity: cues.mood.intensity,
-                    duck,
-                });
-                let (bpm, swing) = (band.director.bpm(), band.director.swing());
-                for note in &plan.notes {
-                    let Some(voice) = band.voicer.voice(note, (bar * bpb) as f64, bpm, swing)
-                    else {
-                        continue;
-                    };
-                    let tick = clock.tick_of_beat(voice.beat);
-                    if let Some(at) = music.sync.sample_for_tick(tick, compensation) {
-                        notes.push(Scheduled {
-                            at,
-                            samples: voice.samples,
-                            gain: voice.gain,
-                        });
-                    }
-                }
-                band.bars.push_back((bar, plan));
-                if band.bars.len() > 8 {
-                    band.bars.pop_front();
-                }
-                bar += 1;
-            }
-            band.next_bar = Some(bar);
-        }
-    }
-
-    // The click track.
-    if !music.file.click.enabled || music.muted {
-        music.next_beat = None;
-        if !notes.is_empty()
-            && let Ok(mut inbox) = music.shared.inbox.lock()
-        {
-            inbox.extend(notes);
-        }
-        return;
-    }
-    // Start (or resume after a pause) on the next beat, never in the past.
-    let first_due = clock.beats_at(now).floor() as i64 + 1;
-    let mut beat = music.next_beat.map_or(first_due, |b| b.max(first_due));
-    while clock.tick_of_beat(beat as f64) <= horizon {
-        let tick = clock.tick_of_beat(beat as f64);
-        let Some(at) = music.sync.sample_for_tick(tick, compensation) else {
-            break;
-        };
-        let downbeat = beat.rem_euclid(clock.beats_per_bar() as i64) == 0;
-        notes.push(Scheduled {
-            at,
-            samples: if downbeat {
-                music.downbeat.clone()
-            } else {
-                music.beat.clone()
-            },
-            gain: music.file.click.volume,
-        });
-        beat += 1;
-    }
-    music.next_beat = Some(beat);
+    let notes = music.schedule(
+        &mut cues,
+        flow.as_ref().and_then(|f| program_for(&f.0)),
+        time.delta_secs_f64(),
+        fixed.overstep_fraction() as f64,
+        taken,
+        time.delta_secs(),
+    );
     if !notes.is_empty()
         && let Ok(mut inbox) = music.shared.inbox.lock()
     {
         inbox.extend(notes);
+    }
+}
+
+impl Music {
+    /// One frame of music: follows the sim (or keeps time while it is
+    /// frozen), hands over to the program the screen `wants`, and returns
+    /// what is due in the next `lookahead` seconds. `taken` is how many
+    /// samples the device has taken.
+    fn schedule(
+        &mut self,
+        cues: &mut MusicCues,
+        wants: Option<Program>,
+        delta: f64,
+        overstep: f64,
+        taken: u64,
+        delta_secs: f32,
+    ) -> Vec<Scheduled> {
+        let music = self;
+        let p = music.file.stream.clone();
+        // Follow the sim, or keep time on its own while it is frozen.
+        let tps = TICKS_PER_SECOND as f64;
+        let rebased = music.timeline.advance(
+            cues.tick,
+            overstep,
+            delta * tps,
+            p.frozen_after as f64 * tps,
+        ) | std::mem::take(&mut cues.restarted);
+        let now = music.timeline.now();
+        let offset = music.timeline.offset();
+        let clock = cues.clock;
+        let bpb = clock.beats_per_bar().max(1) as i64;
+        // The first band bar line after music time `t`.
+        let band_bar = |t: f64| (clock.beats_at(t - offset) / bpb as f64).floor() as i64 + 1;
+        if rebased {
+            // Bars placed in sim time are placed again from the next bar line,
+            // and a fade under way starts over there.
+            music.next_beat = None;
+            if let Some(band) = &mut music.band {
+                band.next_bar = None;
+                band.bars.clear();
+            }
+            let f = music.band_fade;
+            if f.from != f.to {
+                music.band_fade = Fade {
+                    start: band_bar(now),
+                    ..f
+                };
+            }
+        }
+        music.sync.observe(now, taken, &p);
+
+        // A new screen, a new program.
+        if let Some(to) = wants
+            && music.program != Some(to)
+        {
+            music.segue(to, &clock);
+        }
+        if music.program.is_none() {
+            // No screens (a test app): just the band.
+            music.segue(Program::Band, &clock);
+        }
+        let compensation = p.latency_compensation
+            + if p.auto_compensate {
+                music.latency
+            } else {
+                0.0
+            };
+        let horizon = now + p.lookahead as f64 * TICKS_PER_SECOND as f64;
+        let mut notes = Vec::new();
+
+        // The band, a bar at a time, and the player's own drumming.
+        let moves = std::mem::take(&mut cues.moves);
+        if let Some(band) = &mut music.band {
+            band.drummer.advance(delta_secs);
+            for (tick, name, strength) in moves {
+                let strength = match strength {
+                    Strength::Full => 1.0,
+                    Strength::Power(p) => p,
+                    Strength::Speed(v) => v / band.drummer.kit().full_speed.max(1e-3),
+                };
+                let moment = moment(&band.director, &band.bars, &clock, tick as f64);
+                let (strike, answers) = band.drummer.hear(name, strength, moment);
+                for cue in answers {
+                    match cue {
+                        Cue::Fill => band.director.request_fill(),
+                        Cue::NextSection => band.director.request_next_section(),
+                    }
+                }
+                if music.muted {
+                    continue;
+                }
+                let Some(strike) = strike else {
+                    continue;
+                };
+                let Some((samples, gain)) =
+                    band.voicer
+                        .strike(&strike.patch, strike.pitch, strike.velocity)
+                else {
+                    continue;
+                };
+                if let Some(at) = music
+                    .sync
+                    .sample_for_tick(tick as f64 + offset, compensation)
+                {
+                    notes.push(Scheduled { at, samples, gain });
+                }
+            }
+            let duck = band.drummer.duck();
+            let fade = &mut music.band_fade;
+            if music.muted {
+                band.next_bar = None;
+            } else {
+                // Start (or resume) on the next bar line, never in the past.
+                let first_due = band_bar(now);
+                let mut bar = band.next_bar.map_or(first_due, |b| b.max(first_due));
+                while clock.tick_of_beat((bar * bpb) as f64) + offset <= horizon
+                    && music.sync.sample_for_tick(now, compensation).is_some()
+                {
+                    if fade.silent_from(bar) {
+                        break;
+                    }
+                    if bar >= fade.start.saturating_add(fade.bars as i64) {
+                        *fade = Fade::steady(fade.to);
+                    }
+                    let level = fade.gain(bar);
+                    let plan = band.director.next_bar(Input {
+                        intensity: cues.mood.intensity,
+                        duck,
+                    });
+                    let (bpm, swing) = (band.director.bpm(), band.director.swing());
+                    for note in &plan.notes {
+                        let Some(voice) = band.voicer.voice(note, (bar * bpb) as f64, bpm, swing)
+                        else {
+                            continue;
+                        };
+                        let tick = clock.tick_of_beat(voice.beat) + offset;
+                        if let Some(at) = music.sync.sample_for_tick(tick, compensation) {
+                            notes.push(Scheduled {
+                                at,
+                                samples: voice.samples,
+                                gain: voice.gain * level,
+                            });
+                        }
+                    }
+                    band.bars.push_back((bar, plan));
+                    if band.bars.len() > 8 {
+                        band.bars.pop_front();
+                    }
+                    bar += 1;
+                }
+                band.next_bar = Some(bar);
+            }
+
+            // The screen pieces, voiced by the band's instruments.
+            for player in &mut music.pieces {
+                let (bpm, swing) = (player.piece.bpm, player.piece.swing);
+                let pbpb = player.piece.beats_per_bar.max(1) as i64;
+                let bars: Vec<(i64, f32, Vec<tarborn_music::Note>)> = player
+                    .due(horizon)
+                    .into_iter()
+                    .map(|(bar, gain, notes)| (bar, gain, notes.to_vec()))
+                    .collect();
+                if music.muted {
+                    continue;
+                }
+                for (bar, level, bar_notes) in bars {
+                    for note in &bar_notes {
+                        let Some(voice) = band.voicer.voice(note, (bar * pbpb) as f64, bpm, swing)
+                        else {
+                            continue;
+                        };
+                        let tick = player.tick_of_beat(voice.beat);
+                        if let Some(at) = music.sync.sample_for_tick(tick, compensation) {
+                            notes.push(Scheduled {
+                                at,
+                                samples: voice.samples,
+                                gain: voice.gain * level,
+                            });
+                        }
+                    }
+                }
+            }
+            music.pieces.retain(|p| !p.done());
+        }
+
+        // The click track.
+        if !music.file.click.enabled || music.muted {
+            music.next_beat = None;
+            return notes;
+        }
+        // Start (or resume after a pause) on the next beat, never in the past.
+        let first_due = clock.beats_at(now - offset).floor() as i64 + 1;
+        let mut beat = music.next_beat.map_or(first_due, |b| b.max(first_due));
+        while clock.tick_of_beat(beat as f64) + offset <= horizon {
+            let tick = clock.tick_of_beat(beat as f64) + offset;
+            let Some(at) = music.sync.sample_for_tick(tick, compensation) else {
+                break;
+            };
+            let downbeat = beat.rem_euclid(clock.beats_per_bar() as i64) == 0;
+            notes.push(Scheduled {
+                at,
+                samples: if downbeat {
+                    music.downbeat.clone()
+                } else {
+                    music.beat.clone()
+                },
+                gain: music.file.click.volume,
+            });
+            beat += 1;
+        }
+        music.next_beat = Some(beat);
+        notes
     }
 }
 
@@ -1072,6 +1271,166 @@ mod tests {
                 Band::new(&file, style).unwrap_or_else(|e| panic!("{style}: {e}"));
             }
         }
+    }
+
+    /// The music heard frame by frame (60 fps) through a run's screens,
+    /// without a device: the device takes samples in step with wall time,
+    /// and the sim ticks only while playing.
+    struct Tour {
+        music: Music,
+        cues: MusicCues,
+        wall: f64,
+    }
+
+    impl Tour {
+        fn new() -> Self {
+            let file: MusicFile = from_ron(BUILT_IN).expect("music.ron parses");
+            let mut cues = MusicCues::default();
+            let (music, _) = Music::new(music_file(), file, &mut cues);
+            let (bpm, bpb) = cues.tempo.expect("a tempo");
+            cues.clock = BeatClock::new(bpm, bpb);
+            Self {
+                music,
+                cues,
+                wall: 0.0,
+            }
+        }
+
+        /// `seconds` on a screen that `wants` a program: the scheduled
+        /// notes' gains.
+        fn screen(&mut self, wants: Option<Program>, sim_runs: bool, seconds: f32) -> Vec<f32> {
+            let frame = 1.0 / 60.0;
+            let rate = self.music.file.render.sample_rate as f64;
+            let mut gains = Vec::new();
+            for _ in 0..(seconds * 60.0).round() as usize {
+                self.wall += frame;
+                if sim_runs {
+                    self.cues.tick += 2;
+                }
+                let taken = (self.wall * rate) as u64;
+                let notes =
+                    self.music
+                        .schedule(&mut self.cues, wants, frame, 0.0, taken, frame as f32);
+                gains.extend(notes.iter().map(|n| n.gain));
+            }
+            gains
+        }
+    }
+
+    #[test]
+    fn every_screen_plays_its_piece() {
+        let mut t = Tour::new();
+        let intro = Some(Program::Piece(PieceKind::Intro));
+        // The start screen: the sim is frozen, the intro plays (and loops).
+        assert!(!t.screen(intro, false, 20.0).is_empty(), "no intro");
+        assert!(
+            t.music
+                .pieces
+                .iter()
+                .any(|p| p.piece.kind == PieceKind::Intro)
+        );
+        // Loading keeps it; play brings the band in.
+        t.screen(None, false, 1.0);
+        assert!(
+            !t.screen(Some(Program::Band), true, 10.0).is_empty(),
+            "no band"
+        );
+        assert!(t.music.pieces.is_empty(), "the intro never ended");
+        // A pause freezes the sim but not the band.
+        assert!(
+            !t.screen(Some(Program::Band), false, 3.0).is_empty(),
+            "silent pause"
+        );
+        assert!(!t.screen(Some(Program::Band), true, 3.0).is_empty());
+        // The exit: a stinger.
+        let stinger = Some(Program::Piece(PieceKind::Stinger));
+        assert!(!t.screen(stinger, false, 4.0).is_empty(), "no stinger");
+        t.screen(None, false, 1.0);
+        t.cues.restarted = true;
+        t.cues.tick = 0;
+        assert!(!t.screen(Some(Program::Band), true, 10.0).is_empty());
+        // Death: the ballad plays once, and then the music rests.
+        let ballad = Some(Program::Piece(PieceKind::Ballad));
+        assert!(!t.screen(ballad, false, 2.0).is_empty(), "no ballad");
+        assert!(
+            t.music
+                .pieces
+                .iter()
+                .any(|p| p.piece.kind == PieceKind::Ballad)
+        );
+        t.screen(ballad, false, 30.0);
+        assert!(
+            t.screen(ballad, false, 5.0).is_empty(),
+            "the ballad never ends"
+        );
+    }
+
+    #[test]
+    fn screens_hand_over_on_a_bar_line() {
+        let mut t = Tour::new();
+        let fade_bars = t.music.file.screens.fade_bars;
+        t.screen(Some(Program::Band), true, 5.0);
+        // Band to stinger: the stinger starts on the band's next bar line,
+        // and the band fades out from that bar.
+        let bar = t.music.band.as_ref().unwrap().next_bar.unwrap();
+        let bpb = t.cues.clock.beats_per_bar() as i64;
+        let line = t.cues.clock.tick_of_beat((bar * bpb) as f64) + t.music.timeline.offset();
+        t.screen(Some(Program::Piece(PieceKind::Stinger)), false, 1.0 / 60.0);
+        let stinger = t.music.pieces.last().expect("a stinger");
+        assert!(
+            (stinger.start - line).abs() < 1e-6,
+            "{} vs {line}",
+            stinger.start
+        );
+        let fade = t.music.band_fade;
+        assert_eq!(fade.gain(bar - 1), 1.0);
+        assert!(fade.gain(bar) < 1.0 && fade.gain(bar) > 0.0);
+        assert!(fade.silent_from(bar + fade_bars as i64));
+        // The band stops once faded.
+        // The band stays out once faded, and the stinger plays only once.
+        t.screen(Some(Program::Piece(PieceKind::Stinger)), false, 15.0);
+        let after = t.screen(Some(Program::Piece(PieceKind::Stinger)), false, 5.0);
+        assert!(after.is_empty(), "{} notes after the stinger", after.len());
+        // Stinger to intro: the intro starts on one of the stinger's bar
+        // lines, or right away once the stinger is over.
+        t.screen(Some(Program::Piece(PieceKind::Intro)), false, 1.0 / 60.0);
+        let intro = t.music.pieces.last().unwrap();
+        assert_eq!(intro.piece.kind, PieceKind::Intro);
+        assert!(intro.start >= t.music.timeline.now() - 1e-6);
+        // Intro to band: the intro fades out from its next bar, and the
+        // band comes in on a bar line no earlier than that.
+        t.screen(Some(Program::Piece(PieceKind::Intro)), false, 8.0);
+        let intro = t.music.pieces.last().unwrap();
+        let from = intro.bar_tick(intro.next_bar());
+        t.screen(Some(Program::Band), false, 1.0 / 60.0);
+        let intro = t.music.pieces.last().unwrap();
+        assert_eq!(intro.fade.to, 0.0);
+        let band_bar = t.music.band.as_ref().unwrap().next_bar.unwrap();
+        let band_line =
+            t.cues.clock.tick_of_beat((band_bar * bpb) as f64) + t.music.timeline.offset();
+        assert!(band_line >= from - 1e-6, "{band_line} < {from}");
+        assert_eq!(t.music.band_fade.gain(band_bar - 1), 0.0);
+        assert!(t.music.band_fade.gain(band_bar) > 0.0);
+    }
+
+    #[test]
+    fn each_screen_asks_for_its_program() {
+        use crate::flow::{Flow, RunParams, Screen};
+        let mut flow = Flow::new(RunParams::default(), 1);
+        let mut at = |screen, won| {
+            flow.screen = screen;
+            flow.stats.won = won;
+            program_for(&flow)
+        };
+        let piece = |k| Some(Program::Piece(k));
+        assert_eq!(at(Screen::Start, false), piece(PieceKind::Intro));
+        assert_eq!(at(Screen::Chunks, false), piece(PieceKind::Intro));
+        assert_eq!(at(Screen::Loading, false), None);
+        assert_eq!(at(Screen::Playing, false), Some(Program::Band));
+        assert_eq!(at(Screen::Paused, false), Some(Program::Band));
+        assert_eq!(at(Screen::Transition, false), piece(PieceKind::Stinger));
+        assert_eq!(at(Screen::RunOver, false), piece(PieceKind::Ballad));
+        assert_eq!(at(Screen::RunOver, true), piece(PieceKind::Intro));
     }
 
     #[test]

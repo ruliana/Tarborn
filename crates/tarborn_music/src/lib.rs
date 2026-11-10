@@ -20,6 +20,7 @@ pub mod grammar;
 pub mod metrics;
 pub mod mood;
 pub mod patches;
+pub mod pieces;
 pub mod render;
 pub mod rng;
 pub mod score;
@@ -55,6 +56,8 @@ pub struct MusicFile {
     pub mood: mood::MoodParams,
     /// How enemy windups stretch to land strikes on the beat.
     pub beat_snap: BeatSnapParams,
+    /// The pieces on the screens around play.
+    pub screens: pieces::ScreenParams,
 }
 
 /// Enemy windups stretch (never shrink) so strikes land on the grid. The

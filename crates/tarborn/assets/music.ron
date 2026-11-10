@@ -49,6 +49,9 @@
         volume: 0.8,
         // Seconds between checks of this file for edits.
         reload_interval: 0.5,
+        // Seconds the sim must stand still (menus, pause, death) before the
+        // music keeps time on its own, so the screens have music too.
+        frozen_after: 0.05,
     ),
 
     // A debug metronome on the sim's beat clock: turn it on to hear that the
@@ -177,5 +180,38 @@
         max_shift: 0.15,
         // Beats: 1 snaps to every beat, 0.5 to every eighth note.
         grid: 0.5,
+    ),
+
+    // Music on the screens around play, cut from the stage style's library:
+    // an intro on the start screen, a stinger between stages and a ballad
+    // fragment on death. A screen change hands over on a bar line: what was
+    // playing fades out over fade_bars while the new piece fades in over its
+    // own fade_in_bars (0 starts at full level).
+    screens: (
+        fade_bars: 2,
+        // Bars over which the band comes back when play starts.
+        band_fade_in_bars: 1,
+        intro: (
+            // The head (first section of the form) at a middle layer, looped.
+            form_at: 0,
+            layer: 1,
+            velocity: 0.85,
+            looped: true,
+            fade_in_bars: 1,
+        ),
+        stinger: (
+            // The tune's own stinger, once, at full level.
+            stinger: true,
+            velocity: 1.0,
+        ),
+        ballad: (
+            // The last section, half tempo, bass and comping only, once.
+            form_at: -1,
+            layer: 0,
+            roles: [Bass, Comp],
+            max_bars: 4,
+            tempo_scale: 0.5,
+            velocity: 0.7,
+        ),
     ),
 )

@@ -42,6 +42,9 @@ pub struct StreamParams {
     pub volume: f32,
     /// Seconds between checks of `music.ron` for edits.
     pub reload_interval: f32,
+    /// Seconds the sim's tick must stand still before the music counts it
+    /// as frozen (a menu, a pause) and keeps time on its own.
+    pub frozen_after: f32,
 }
 
 impl Default for StreamParams {
@@ -58,6 +61,7 @@ impl Default for StreamParams {
             max_voices: 48,
             volume: 1.0,
             reload_interval: 0.5,
+            frozen_after: 0.05,
         }
     }
 }
@@ -257,5 +261,64 @@ impl LatencyMeter {
             ms(self.largest as f64),
             self.latency(sample_rate, p) * 1000.0
         )
+    }
+}
+
+/// The music's own time, in sim ticks. It follows the sim while the sim
+/// runs, keeps running on its own while the sim is frozen (menus, pauses,
+/// fades, death), and picks the sim up again without a jump when it
+/// resumes or restarts, so music can play across every screen.
+#[derive(Clone, Debug, Default)]
+pub struct Timeline {
+    now: f64,
+    /// Music time minus sim time.
+    offset: f64,
+    last_tick: Option<u64>,
+    /// Ticks of wall time since the sim tick last moved.
+    stale: f64,
+}
+
+impl Timeline {
+    /// Music time now.
+    pub fn now(&self) -> f64 {
+        self.now
+    }
+
+    /// Music time minus sim time: add it to a sim tick to place it.
+    pub fn offset(&self) -> f64 {
+        self.offset
+    }
+
+    /// Advances by a frame of `elapsed` ticks of wall time, the sim being at
+    /// `tick` plus `overstep` (a fraction of a tick). The sim counts as
+    /// frozen once its tick has not moved for `frozen_after` ticks. Returns
+    /// true when the sim was re-anchored (it resumed or went back in time):
+    /// anything placed in sim time ahead of now should be placed again.
+    pub fn advance(&mut self, tick: u64, overstep: f64, elapsed: f64, frozen_after: f64) -> bool {
+        let sim = tick as f64 + overstep;
+        let moved = self.last_tick != Some(tick);
+        let mut rebased = false;
+        if moved {
+            let resumed = self.stale > frozen_after;
+            let back = self.last_tick.is_some_and(|t| tick < t);
+            if self.last_tick.is_none() {
+                self.offset = self.now - sim;
+            } else if resumed || back {
+                self.offset = self.now + elapsed - sim;
+                rebased = true;
+            }
+            self.stale = 0.0;
+            self.last_tick = Some(tick);
+        } else {
+            self.stale += elapsed;
+        }
+        // Frozen: wall time from the last tick the sim moved to.
+        let at = if self.stale > frozen_after {
+            tick as f64 + self.offset + self.stale
+        } else {
+            sim + self.offset
+        };
+        self.now = at.max(self.now);
+        rebased
     }
 }

@@ -27,6 +27,7 @@ pub mod score;
 pub mod search;
 pub mod stream;
 pub mod style;
+pub mod telemetry;
 pub mod theory;
 pub mod time;
 
@@ -58,6 +59,8 @@ pub struct MusicFile {
     pub beat_snap: BeatSnapParams,
     /// The pieces on the screens around play.
     pub screens: pieces::ScreenParams,
+    /// What gets logged per run, to tune the music against fun.
+    pub telemetry: telemetry::TelemetryParams,
 }
 
 /// Enemy windups stretch (never shrink) so strikes land on the grid. The

@@ -214,4 +214,18 @@
             velocity: 0.7,
         ),
     ),
+
+    // Fun telemetry: each run writes a log of the bars the band played (with
+    // the game's mood), the player's drum hits, mutes (M) and the one-tap
+    // ratings on the pause and run-over menus. Summarise them with:
+    //   cargo run --release -p tarborn_music --bin report -- --runs
+    telemetry: (
+        enabled: true,
+        // Relative to this file's folder.
+        dir: "../logs/music",
+        // Beats from the nearest beat within which a hit counts as on it.
+        on_beat: 0.125,
+        // Beats around a hit within which band notes compete with it.
+        mask_window: 0.125,
+    ),
 )

@@ -35,6 +35,7 @@ use tarborn_music::pieces::{Fade, PieceKind, PiecePlayer, piece};
 use tarborn_music::search::LibraryTune;
 use tarborn_music::stream::{AudioSync, LatencyMeter, Mixer, Scheduled, StreamParams, Timeline};
 use tarborn_music::style::Style;
+use tarborn_music::telemetry::{BarLog, HitLog, MuteLog, Rating, RunLog};
 use tarborn_music::{MusicFile, PatchBank, from_ron};
 use tarborn_sfx::soft_limit;
 use tarborn_sim::{
@@ -73,13 +74,26 @@ impl Plugin for MusicPlugin {
     fn build(&self, app: &mut App) {
         app.add_audio_source::<MusicStream>()
             .init_resource::<MusicCues>()
+            .init_resource::<Ratings>()
             .add_systems(Startup, start_music)
             .add_systems(
                 Update,
-                (reload_music, follow_stage, toggle_mute, schedule_music).chain(),
+                (
+                    reload_music,
+                    follow_stage,
+                    toggle_mute,
+                    schedule_music,
+                    log_music,
+                )
+                    .chain(),
             );
     }
 }
+
+/// Music ratings the player gave on the menus, waiting to be logged:
+/// stage number and +1 or -1.
+#[derive(Resource, Default)]
+pub struct Ratings(pub Vec<(usize, i8)>);
 
 /// What the music plays.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -387,6 +401,12 @@ struct Music {
     latency: f32,
     since_log: f32,
     muted: bool,
+    /// This run's music log, once something was logged.
+    log: Option<RunLog>,
+    /// The log has news not yet written.
+    log_dirty: bool,
+    /// The screen last seen, to notice a new run starting.
+    last_screen: Option<crate::flow::Screen>,
 }
 
 fn music_file() -> PathBuf {
@@ -475,6 +495,92 @@ impl Band {
             next_bar: None,
             bars: VecDeque::new(),
         })
+    }
+}
+
+/// The run log to add to, started when first needed; None when telemetry
+/// is off.
+fn logging(log: &mut Option<RunLog>, enabled: bool) -> Option<&mut RunLog> {
+    enabled.then(|| {
+        log.get_or_insert_with(|| RunLog {
+            started: SystemTime::now()
+                .duration_since(SystemTime::UNIX_EPOCH)
+                .map_or(0, |d| d.as_secs()),
+            ..Default::default()
+        })
+    })
+}
+
+/// Seconds of music time at tick `t`.
+fn seconds(t: f64) -> f32 {
+    (t / TICKS_PER_SECOND as f64) as f32
+}
+
+impl Music {
+    /// Where run logs go.
+    fn log_dir(&self) -> PathBuf {
+        self.path
+            .parent()
+            .unwrap_or(std::path::Path::new("."))
+            .join(&self.file.telemetry.dir)
+    }
+
+    /// Writes this run's log, if it has news. Returns where.
+    fn save_log(&mut self) -> Option<PathBuf> {
+        if !std::mem::take(&mut self.log_dirty) {
+            return None;
+        }
+        let log = self.log.as_ref()?;
+        let dir = self.log_dir();
+        let path = dir.join(format!("run-{}.ron", log.started));
+        let text = ron::ser::to_string_pretty(log, ron::ser::PrettyConfig::default())
+            .map_err(|e| e.to_string());
+        let written = text.and_then(|text| {
+            std::fs::create_dir_all(&dir)
+                .and_then(|_| std::fs::write(&path, text))
+                .map_err(|e| e.to_string())
+        });
+        match written {
+            Ok(()) => Some(path),
+            Err(e) => {
+                warn!("music log {}: {e}", path.display());
+                None
+            }
+        }
+    }
+
+    /// Ends this run's log; the next thing logged starts a new one.
+    fn new_run(&mut self) {
+        self.save_log();
+        self.log = None;
+    }
+
+    fn set_muted(&mut self, muted: bool) {
+        self.muted = muted;
+        let t = seconds(self.timeline.now());
+        if let Some(log) = logging(&mut self.log, self.file.telemetry.enabled) {
+            log.mutes.push(MuteLog { t, muted });
+            self.log_dirty = true;
+        }
+    }
+
+    /// The player rated stage `stage`'s music.
+    fn rate(&mut self, stage: usize, rating: i8) {
+        let style = self
+            .band
+            .as_ref()
+            .map(|b| b.director.style().name.clone())
+            .unwrap_or_default();
+        let t = seconds(self.timeline.now());
+        if let Some(log) = logging(&mut self.log, self.file.telemetry.enabled) {
+            log.ratings.push(Rating {
+                t,
+                stage,
+                style,
+                rating,
+            });
+            self.log_dirty = true;
+        }
     }
 }
 
@@ -604,6 +710,9 @@ impl Music {
             latency: 0.0,
             since_log: 0.0,
             muted: false,
+            log: None,
+            log_dirty: false,
+            last_screen: None,
         };
         music.file.render.sample_rate = rate;
         music.install(file, cues);
@@ -710,7 +819,34 @@ fn follow_stage(
 /// M mutes and unmutes (the sound effects listen to it too).
 fn toggle_mute(keys: Res<ButtonInput<KeyCode>>, mut music: ResMut<Music>) {
     if keys.just_pressed(KeyCode::KeyM) {
-        music.muted = !music.muted;
+        let muted = !music.muted;
+        music.set_muted(muted);
+    }
+}
+
+/// Logs ratings, starts a new log with each run, and writes the log when
+/// play stops (and after a rating or a mute).
+fn log_music(
+    flow: Option<Res<crate::screens::RunFlow>>,
+    mut ratings: ResMut<Ratings>,
+    mut music: ResMut<Music>,
+) {
+    use crate::flow::{Mode, Screen};
+    for (stage, rating) in ratings.0.drain(..) {
+        music.rate(stage, rating);
+    }
+    let Some(flow) = flow else {
+        return;
+    };
+    let screen = flow.0.screen;
+    if music.last_screen == Some(screen) {
+        return;
+    }
+    music.last_screen = Some(screen);
+    if screen == Screen::Loading && flow.0.stage == 0 && flow.0.mode == Mode::Run {
+        music.new_run();
+    } else if screen != Screen::Playing {
+        music.save_log();
     }
 }
 
@@ -832,6 +968,25 @@ impl Music {
                     Strength::Power(p) => p,
                     Strength::Speed(v) => v / band.drummer.kit().full_speed.max(1e-3),
                 };
+                if let Some(log) = logging(&mut music.log, music.file.telemetry.enabled) {
+                    let beats = clock.beats_at(tick as f64);
+                    let bar = (beats / bpb as f64).floor() as i64;
+                    let in_bar = (beats - (bar * bpb) as f64) as f32;
+                    let window = music.file.telemetry.mask_window;
+                    let band_near = band
+                        .bars
+                        .iter()
+                        .filter(|(b, _)| *b == bar)
+                        .flat_map(|(_, plan)| &plan.notes)
+                        .filter(|n| (n.start - in_bar).abs() <= window)
+                        .count() as u32;
+                    log.hits.push(HitLog {
+                        t: seconds(tick as f64 + offset),
+                        name: name.to_string(),
+                        from_beat: (beats - beats.round()) as f32,
+                        band_near,
+                    });
+                }
                 let moment = moment(&band.director, &band.bars, &clock, tick as f64);
                 let (strike, answers) = band.drummer.hear(name, strength, moment);
                 for cue in answers {
@@ -895,6 +1050,21 @@ impl Music {
                                 gain: voice.gain * level,
                             });
                         }
+                    }
+                    if let Some(log) = logging(&mut music.log, music.file.telemetry.enabled) {
+                        log.bars.push(BarLog {
+                            t: seconds(clock.tick_of_beat((bar * bpb) as f64) + offset),
+                            style: band.director.style().name.clone(),
+                            tune: plan.tune,
+                            section: plan.section,
+                            layer: plan.layer,
+                            breather: plan.breather,
+                            fill: plan.fill,
+                            intensity: cues.mood.intensity,
+                            danger: cues.mood.danger,
+                            duck,
+                            notes: plan.notes.len() as u32,
+                        });
                     }
                     band.bars.push_back((bar, plan));
                     if band.bars.len() > 8 {
@@ -1411,6 +1581,52 @@ mod tests {
         assert!(band_line >= from - 1e-6, "{band_line} < {from}");
         assert_eq!(t.music.band_fade.gain(band_bar - 1), 0.0);
         assert!(t.music.band_fade.gain(band_bar) > 0.0);
+    }
+
+    #[test]
+    fn a_run_is_logged_and_summarised() {
+        let mut t = Tour::new();
+        let dir = std::env::temp_dir().join(format!("tarborn-music-log-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        t.music.file.telemetry.dir = dir.to_string_lossy().into_owned();
+        t.music.new_run();
+        t.screen(Some(Program::Band), true, 5.0);
+        // The player drums on a few beats...
+        for beat in 12..20 {
+            let tick = t.cues.clock.tick_of_beat(beat as f64).round() as u64;
+            t.cues.moves.push((tick, "jump", Strength::Full));
+            t.screen(Some(Program::Band), true, 0.25);
+        }
+        // ...mutes for a while, and rates the stage.
+        t.music.set_muted(true);
+        t.screen(Some(Program::Band), true, 2.0);
+        t.music.set_muted(false);
+        t.music.rate(0, 1);
+        t.screen(Some(Program::Band), true, 2.0);
+        let path = t.music.save_log().expect("the log is written");
+        let log: RunLog = from_ron(&std::fs::read_to_string(&path).unwrap()).unwrap();
+        assert!(log.bars.len() > 5, "{} bars", log.bars.len());
+        assert_eq!(log.hits.len(), 8);
+        assert!(
+            log.hits.iter().all(|h| h.from_beat.abs() < 0.05),
+            "{:?}",
+            log.hits
+        );
+        assert_eq!(log.mutes.len(), 2);
+        assert_eq!(log.ratings.len(), 1);
+        let style = &t.music.band.as_ref().unwrap().director.style().name;
+        assert_eq!(&log.ratings[0].style, style);
+        let s = tarborn_music::telemetry::summarize(&[log], &t.music.file.telemetry);
+        assert_eq!(s.styles[style].ratings, 1);
+        assert_eq!(s.on_beat, 1.0);
+        assert!(
+            s.muted_share > 0.1 && s.muted_share < 0.5,
+            "{}",
+            s.muted_share
+        );
+        // Nothing new: nothing written.
+        assert_eq!(t.music.save_log(), None);
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]

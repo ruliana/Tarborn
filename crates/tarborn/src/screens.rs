@@ -194,6 +194,7 @@ fn run_flow(
     mut signals: ResMut<Signals>,
     mut game: ResMut<Game>,
     mut loading: ResMut<Loading>,
+    mut ratings: Option<ResMut<crate::music::Ratings>>,
 ) {
     let incoming = std::mem::take(&mut signals.0);
     let orders = flow.0.update(time.delta_secs(), &incoming);
@@ -232,6 +233,12 @@ fn run_flow(
             Order::RandomSeed => signals.0.push(Signal::Seed(random_seed())),
             // The telemetry hook: every screen change is logged.
             Order::Entered(screen) => info!("run: {screen:?}"),
+            Order::RateMusic { stage, rating } => {
+                info!("run: music of stage {} rated {rating:+}", stage + 1);
+                if let Some(ratings) = &mut ratings {
+                    ratings.0.push((stage, rating));
+                }
+            }
         }
     }
 }

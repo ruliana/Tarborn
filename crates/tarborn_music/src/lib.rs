@@ -53,6 +53,30 @@ pub struct MusicFile {
     pub director: director::DirectorParams,
     /// How tense the moment is, from the game.
     pub mood: mood::MoodParams,
+    /// How enemy windups stretch to land strikes on the beat.
+    pub beat_snap: BeatSnapParams,
+}
+
+/// Enemy windups stretch (never shrink) so strikes land on the grid. The
+/// game hands these to the sim's `BeatSnap`.
+#[derive(Clone, Debug, Deserialize, PartialEq)]
+#[serde(default, deny_unknown_fields)]
+pub struct BeatSnapParams {
+    pub enabled: bool,
+    /// Most seconds a windup may grow.
+    pub max_shift: f32,
+    /// Grid in beats: 1 every beat, 0.5 every eighth.
+    pub grid: f32,
+}
+
+impl Default for BeatSnapParams {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            max_shift: 0.15,
+            grid: 0.5,
+        }
+    }
 }
 
 /// A metronome on the sim's beat clock, to check that the stream keeps time.

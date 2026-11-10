@@ -168,4 +168,14 @@
         rise: 0.3,
         fall: 4.0,
     ),
+
+    // Enemy windups stretch so their strikes land on the beat grid. Only
+    // ever longer, by at most max_shift seconds, so the player always gets
+    // the enemy's normal time to react.
+    beat_snap: (
+        enabled: true,
+        max_shift: 0.15,
+        // Beats: 1 snaps to every beat, 0.5 to every eighth note.
+        grid: 0.5,
+    ),
 )

@@ -188,3 +188,53 @@ mod tests {
         assert!((p.phase - 0.5).abs() < 1e-6);
     }
 }
+
+/// Enemy windups stretch a little so their strikes land on the beat. A
+/// windup is only ever lengthened, by at most `max_shift` seconds, so the
+/// player always gets at least the enemy's normal time to react.
+#[derive(Clone, Copy, Debug, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(default))]
+pub struct BeatSnap {
+    pub enabled: bool,
+    /// Most seconds a windup may grow.
+    pub max_shift: f32,
+    /// Grid strikes snap to, in beats (1 = every beat, 0.5 = every eighth).
+    pub grid: f32,
+}
+
+impl Default for BeatSnap {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            max_shift: 0.15,
+            grid: 1.0,
+        }
+    }
+}
+
+impl BeatSnap {
+    /// The extra windup time (seconds past `windup`) that lands the strike
+    /// on the grid, for a windup `elapsed` seconds in at tick `now`. None
+    /// when the next grid point needs more than `max_shift`, or snapping is
+    /// off: the caller keeps what it had.
+    pub fn extra(
+        &self,
+        clock: &BeatClock,
+        now: f64,
+        elapsed: f32,
+        windup: f32,
+        ticks_per_second: f32,
+    ) -> Option<f32> {
+        if !self.enabled || self.grid <= 0.0 {
+            return None;
+        }
+        let tps = ticks_per_second as f64;
+        let strike = now + (windup - elapsed).max(0.0) as f64 * tps;
+        let grid = self.grid as f64;
+        let on_grid = (clock.beats_at(strike) / grid).ceil() * grid;
+        let wait = ((clock.tick_of_beat(on_grid) - now) / tps) as f32;
+        let extra = elapsed + wait - windup;
+        (0.0..=self.max_shift).contains(&extra).then_some(extra)
+    }
+}

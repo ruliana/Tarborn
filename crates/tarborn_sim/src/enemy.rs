@@ -99,6 +99,9 @@ pub struct Enemy {
     pub state: State,
     /// Seconds spent in the current state.
     pub state_time: f32,
+    /// Seconds added to this windup so the strike lands on the beat (see
+    /// [`crate::BeatSnap`]). Never negative: a windup is never shortened.
+    pub windup_extra: f32,
     /// 1 faces right, -1 faces left.
     pub facing: f32,
     pub position: Vec2,
@@ -263,12 +266,25 @@ pub const BRUTE_MEAL: f32 = 40.0;
 const BACK_OFF_TIME: f32 = 1.2;
 
 impl Enemy {
+    /// The shortest windup this kind of enemy has, in seconds: the time the
+    /// player always gets to react. None for kinds that don't attack.
+    pub fn windup_min(kind: EnemyKind) -> Option<f32> {
+        match kind {
+            EnemyKind::Guard => Some(GUARD_WINDUP),
+            EnemyKind::Spitter => Some(SPIT_AIM),
+            EnemyKind::Skitter => Some(SKITTER_WINDUP),
+            EnemyKind::Brute => Some(BRUTE_WINDUP),
+            EnemyKind::Dummy | EnemyKind::Grub => None,
+        }
+    }
+
     pub fn new(kind: EnemyKind, position: Vec2) -> Self {
         let stats = kind.stats();
         Self {
             kind,
             state: State::Unaware,
             state_time: 0.0,
+            windup_extra: 0.0,
             facing: 1.0,
             position,
             velocity: Vec2::ZERO,
@@ -381,6 +397,7 @@ impl Enemy {
             self.state = state;
             self.state_time = 0.0;
             self.struck = false;
+            self.windup_extra = 0.0;
         }
     }
 
@@ -608,7 +625,7 @@ impl Enemy {
                     self.set_state(State::Searching);
                 }
             }
-            State::Attacking(AttackPhase::Windup) if t > GUARD_WINDUP => {
+            State::Attacking(AttackPhase::Windup) if t > GUARD_WINDUP + self.windup_extra => {
                 self.set_state(State::Attacking(AttackPhase::Strike));
                 // A small step into the swing.
                 self.velocity.x = self.facing * 3.0;
@@ -673,7 +690,7 @@ impl Enemy {
                     self.set_state(State::Searching);
                 } else if let Some(target) = self.target {
                     self.face(target);
-                    if t > SPIT_AIM {
+                    if t > SPIT_AIM + self.windup_extra {
                         self.fire = (target - self.position).try_normalize();
                         self.set_state(State::Attacking(AttackPhase::Strike));
                     }
@@ -748,7 +765,7 @@ impl Enemy {
                 if let Some(target) = self.target {
                     self.face(target);
                 }
-                if t > SKITTER_WINDUP {
+                if t > SKITTER_WINDUP + self.windup_extra {
                     let target = self.target.unwrap_or(self.position);
                     let offset = target - self.position;
                     // A long, flat leap: it overshoots a target that holds still.
@@ -823,7 +840,7 @@ impl Enemy {
                     self.search(stats.walk_speed);
                 }
             }
-            State::Attacking(AttackPhase::Windup) if t > BRUTE_WINDUP => {
+            State::Attacking(AttackPhase::Windup) if t > BRUTE_WINDUP + self.windup_extra => {
                 self.set_state(State::Attacking(AttackPhase::Strike));
             }
             State::Attacking(AttackPhase::Strike) if t > BRUTE_STRIKE => {

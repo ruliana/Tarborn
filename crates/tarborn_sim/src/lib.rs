@@ -13,7 +13,7 @@ pub mod enemy;
 pub mod level;
 
 pub use arena::{ARENA_SPAWN, Arena, Phase};
-pub use beat::{BeatClock, BeatPosition};
+pub use beat::{BeatClock, BeatPosition, BeatSnap};
 pub use blob::{Blob, BlobParams, TarModes};
 pub use combat::{CombatParams, Projectile};
 pub use controller::{Controller, Event, FeelParams, HitKind, Intent};
@@ -99,6 +99,8 @@ pub struct Sim {
     /// The musical beat, counted in ticks. It keeps counting through
     /// hitstop, so the music never stutters on a hit.
     pub clock: BeatClock,
+    /// How enemy windups line up with the beat.
+    pub beat_snap: BeatSnap,
     /// Time left with the world frozen after a hit, so contact feels solid.
     hitstop_left: f32,
     /// Time left invulnerable after being hurt.
@@ -135,6 +137,7 @@ impl Sim {
             dead: false,
             tick: 0,
             clock: BeatClock::default(),
+            beat_snap: BeatSnap::default(),
             hitstop_left: 0.0,
             on_enemy_left: 0.0,
             hurt_left: 0.0,
@@ -226,11 +229,33 @@ impl Sim {
         );
         self.hurt_left = (self.hurt_left - DT).max(0.0);
         combat::resolve(self, intent, &mut events);
+        self.snap_windups();
         if let Some(arena) = &mut self.arena {
             arena.step(&mut self.enemies, DT, &mut events);
         }
         self.combo.update(&events, DT);
         events
+    }
+
+    /// Stretches each windup so its strike lands on the beat. Re-aimed
+    /// every tick, so a hitstop (which pauses enemies but not the beat)
+    /// doesn't knock it off; a windup is never shortened.
+    fn snap_windups(&mut self) {
+        let now = self.tick as f64;
+        for e in &mut self.enemies {
+            if e.state != State::Attacking(AttackPhase::Windup) {
+                continue;
+            }
+            let Some(windup) = Enemy::windup_min(e.kind) else {
+                continue;
+            };
+            if let Some(extra) =
+                self.beat_snap
+                    .extra(&self.clock, now, e.state_time, windup, TICKS_PER_SECOND)
+            {
+                e.windup_extra = extra;
+            }
+        }
     }
 
     pub(crate) fn freeze(&mut self, seconds: f32) {

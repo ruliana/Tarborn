@@ -30,7 +30,9 @@ use tarborn_music::stream::{AudioSync, LatencyMeter, Mixer, Scheduled, StreamPar
 use tarborn_music::style::Style;
 use tarborn_music::{MusicFile, PatchBank, from_ron};
 use tarborn_sfx::soft_limit;
-use tarborn_sim::{AttackPhase, BeatClock, DT, Event, HitKind, Sim, State, TICKS_PER_SECOND};
+use tarborn_sim::{
+    AttackPhase, BeatClock, BeatSnap, DT, Event, HitKind, Sim, State, TICKS_PER_SECOND,
+};
 
 /// The music file built into the game, used when the file on disk is missing.
 const BUILT_IN: &str = include_str!("../assets/music.ron");
@@ -81,6 +83,8 @@ pub struct MusicCues {
     restarted: bool,
     /// Tempo and meter the music wants the clock at.
     tempo: Option<(f32, u32)>,
+    /// How enemy windups line up with the beat.
+    beat_snap: BeatSnap,
     /// How tense the moment is, followed tick by tick from the sim.
     pub mood: Mood,
     mood_params: MoodParams,
@@ -166,6 +170,7 @@ pub fn scene(sim: &Sim) -> Scene {
 impl MusicCues {
     /// Call before each sim tick: sets the clock to the music's tempo.
     pub fn conduct(&self, sim: &mut Sim) {
+        sim.beat_snap = self.beat_snap;
         if let Some((bpm, beats_per_bar)) = self.tempo {
             if sim.clock.bpm() != bpm {
                 sim.clock.set_tempo(sim.tick, bpm);
@@ -464,6 +469,11 @@ impl Music {
             }
         }
         cues.mood_params = file.mood.clone();
+        cues.beat_snap = BeatSnap {
+            enabled: file.beat_snap.enabled,
+            max_shift: file.beat_snap.max_shift,
+            grid: file.beat_snap.grid,
+        };
         self.file = file;
         self.set_tempo(cues);
     }
@@ -768,6 +778,7 @@ mod tests {
         assert!(file.click.bpm > 0.0);
         assert!(file.stream.lookahead > 0.0);
         assert!(!file.click.downbeat.layers.is_empty());
+        assert!(file.beat_snap.enabled && file.beat_snap.max_shift > 0.0);
     }
 
     /// A room with one guard near the player and one far off screen.
@@ -1086,6 +1097,7 @@ mod tests {
         let mut sim = Sim::training_room(Vec2::ZERO);
         cues.conduct(&mut sim);
         assert_eq!(sim.clock.bpm(), 200.0);
+        assert_eq!(sim.beat_snap, BeatSnap::default());
         assert_eq!(sim.clock.beats_per_bar(), 3);
     }
 }

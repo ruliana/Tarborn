@@ -63,6 +63,10 @@
         chunks: "Play a chunk",
         chunk_list: "Back to chunks",
         quit: "Quit to title",
+        // One-tap music ratings (logged for the music's fun telemetry).
+        music_liked: "Music: liked it",
+        music_disliked: "Music: not for me",
+        rated: "  (rated)",
         loading: "Loading",
         cleared: "Run cleared",
         died: "Run over",

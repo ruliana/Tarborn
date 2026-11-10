@@ -2,11 +2,15 @@
 //! each metric's spread and score per role and intensity layer.
 //!
 //! cargo run --release -p tarborn_music --bin report -- [seeds] [style...]
+//!
+//! With `--runs [dir]` it summarises the game's per-run music logs instead
+//! (the `telemetry` section of `music.ron` says where they are).
 
 use std::collections::BTreeMap;
 use tarborn_music::grammar::{fragments, tune, validate};
 use tarborn_music::metrics::{Measures, score};
 use tarborn_music::style::Style;
+use tarborn_music::telemetry::{RunLog, summarize};
 use tarborn_music::{MusicFile, Role, from_ron};
 
 const ASSETS: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../tarborn/assets");
@@ -42,8 +46,41 @@ impl Stats {
     }
 }
 
+/// Summarises every run log in `dir`.
+fn runs(dir: &std::path::Path, file: &MusicFile) {
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        println!("no runs logged yet in {}", dir.display());
+        return;
+    };
+    let mut paths: Vec<_> = entries
+        .filter_map(|e| e.ok().map(|e| e.path()))
+        .filter(|p| p.extension().is_some_and(|x| x == "ron"))
+        .collect();
+    paths.sort();
+    let logs: Vec<RunLog> = paths
+        .iter()
+        .filter_map(|p| {
+            let text = std::fs::read_to_string(p).ok()?;
+            from_ron(&text)
+                .inspect_err(|e| eprintln!("{}: {e}", p.display()))
+                .ok()
+        })
+        .collect();
+    println!("{}", dir.display());
+    println!("{}", summarize(&logs, &file.telemetry));
+}
+
 fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();
+    if args.first().is_some_and(|a| a == "--runs") {
+        let file: MusicFile = load(&format!("{ASSETS}/music.ron"));
+        let dir = args.get(1).map_or_else(
+            || std::path::Path::new(ASSETS).join(&file.telemetry.dir),
+            std::path::PathBuf::from,
+        );
+        runs(&dir, &file);
+        return;
+    }
     let seeds: u32 = args.first().and_then(|s| s.parse().ok()).unwrap_or(200);
     let mut names: Vec<String> = args.iter().skip(1).cloned().collect();
     if names.is_empty() {

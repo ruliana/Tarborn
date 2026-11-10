@@ -90,6 +90,11 @@ pub struct Texts {
     pub chunks: String,
     pub chunk_list: String,
     pub quit: String,
+    /// The one-tap music ratings on the pause and run-over menus, and the
+    /// mark next to the one picked.
+    pub music_liked: String,
+    pub music_disliked: String,
+    pub rated: String,
     pub loading: String,
     pub cleared: String,
     pub died: String,
@@ -148,6 +153,8 @@ pub enum Item {
     Quit,
     /// Back to the list of chunks.
     ChunkList,
+    /// One-tap rating of the stage's music: liked it (+1) or not (-1).
+    RateMusic(i8),
 }
 
 /// Something that happened, fed into [`Flow::update`].
@@ -204,6 +211,8 @@ pub enum Order {
     RandomSeed,
     /// Something to log for telemetry: every screen change.
     Entered(Screen),
+    /// The player rated the music of stage `stage`: +1 liked, -1 didn't.
+    RateMusic { stage: usize, rating: i8 },
 }
 
 /// Totals for the run-over screen.
@@ -241,6 +250,8 @@ pub struct Flow {
     dead: bool,
     /// The play timer when the game was paused, restored on resume.
     paused_at: f32,
+    /// The music rating given to this stage, if any.
+    pub rated: Option<i8>,
 }
 
 impl Flow {
@@ -260,6 +271,7 @@ impl Flow {
             loaded: false,
             dead: false,
             paused_at: 0.0,
+            rated: None,
         }
     }
 
@@ -295,11 +307,27 @@ impl Flow {
                 .map(Item::Chunk)
                 .chain([Item::Quit])
                 .collect(),
-            Screen::Paused if matches!(self.mode, Mode::Chunk(_)) => {
-                vec![Item::Resume, Item::Restart, Item::ChunkList, Item::Quit]
-            }
-            Screen::Paused => vec![Item::Resume, Item::Restart, Item::Quit],
-            Screen::RunOver => vec![Item::Again, Item::Quit],
+            Screen::Paused if matches!(self.mode, Mode::Chunk(_)) => vec![
+                Item::Resume,
+                Item::Restart,
+                Item::ChunkList,
+                Item::Quit,
+                Item::RateMusic(1),
+                Item::RateMusic(-1),
+            ],
+            Screen::Paused => vec![
+                Item::Resume,
+                Item::Restart,
+                Item::Quit,
+                Item::RateMusic(1),
+                Item::RateMusic(-1),
+            ],
+            Screen::RunOver => vec![
+                Item::Again,
+                Item::Quit,
+                Item::RateMusic(1),
+                Item::RateMusic(-1),
+            ],
             Screen::Loading | Screen::Playing | Screen::Transition => Vec::new(),
         }
     }
@@ -332,6 +360,18 @@ impl Flow {
             },
             Item::Again => t.again.clone(),
             Item::Quit => t.quit.clone(),
+            Item::RateMusic(r) => {
+                let words = if r > 0 {
+                    &t.music_liked
+                } else {
+                    &t.music_disliked
+                };
+                if self.rated == Some(r) {
+                    format!("{words}{}", t.rated)
+                } else {
+                    words.clone()
+                }
+            }
         }
     }
 
@@ -345,6 +385,7 @@ impl Flow {
     fn load(&mut self, orders: &mut Vec<Order>) {
         self.loaded = false;
         self.dead = false;
+        self.rated = None;
         self.enter(Screen::Loading, orders);
         orders.push(Order::Load {
             stage: self.stage,
@@ -529,6 +570,13 @@ impl Flow {
                 Mode::Chunk(i) => self.load_chunk(i, orders),
             },
             Item::Quit => self.quit(orders),
+            Item::RateMusic(rating) => {
+                self.rated = Some(rating);
+                orders.push(Order::RateMusic {
+                    stage: self.stage,
+                    rating,
+                });
+            }
         }
     }
 }
@@ -694,7 +742,9 @@ mod tests {
         let orders = f.update(TICK, &[Signal::Down, Signal::Confirm]);
         assert_eq!(f.screen, Screen::Playing);
         assert!(orders.contains(&Order::OpenRoom("arena".into())));
-        f.update(TICK, &[Signal::Back, Signal::Up, Signal::Confirm]);
+        f.update(TICK, &[Signal::Back]);
+        let quit = f.menu().iter().position(|i| *i == Item::Quit).unwrap();
+        f.update(TICK, &[Signal::Pick(quit)]);
         assert_eq!(f.screen, Screen::Start);
         assert_eq!(f.mode, Mode::Run);
     }
@@ -747,7 +797,16 @@ mod tests {
         assert_eq!(f.screen, Screen::Paused);
         assert!(!f.simulating());
         assert_eq!(f.fade(), p.pause_dim);
-        assert_eq!(f.menu(), [Item::Resume, Item::Restart, Item::Quit]);
+        assert_eq!(
+            f.menu(),
+            [
+                Item::Resume,
+                Item::Restart,
+                Item::Quit,
+                Item::RateMusic(1),
+                Item::RateMusic(-1)
+            ]
+        );
         wait(&mut f, 2.0);
         assert_eq!(f.stats.time, time, "the clock stops while paused");
         f.update(0.0, &[Signal::Back]);
@@ -816,10 +875,54 @@ mod tests {
         f.update(TICK, &[Signal::Died]);
         wait(&mut f, p.death_delay + 0.05);
         assert_eq!(f.screen, Screen::RunOver);
-        assert_eq!(f.menu(), [Item::Again, Item::Quit]);
+        assert_eq!(
+            f.menu(),
+            [
+                Item::Again,
+                Item::Quit,
+                Item::RateMusic(1),
+                Item::RateMusic(-1)
+            ]
+        );
         wait(&mut f, p.run_over_min);
         let orders = f.update(TICK, &[Signal::Confirm]);
         assert_eq!(loads(&orders), [(0, None)]);
+    }
+
+    #[test]
+    fn the_music_is_rated_in_one_tap_from_pause_or_run_over() {
+        let mut f = playing();
+        let p = f.params.clone();
+        f.update(TICK, &[Signal::Back]);
+        let liked = f
+            .menu()
+            .iter()
+            .position(|i| *i == Item::RateMusic(1))
+            .unwrap();
+        let orders = f.update(TICK, &[Signal::Pick(liked)]);
+        assert!(orders.contains(&Order::RateMusic {
+            stage: 0,
+            rating: 1
+        }));
+        assert_eq!(f.screen, Screen::Paused, "rating doesn't leave the menu");
+        assert!(f.label(Item::RateMusic(1)).ends_with(&p.texts.rated));
+        assert_eq!(f.label(Item::RateMusic(-1)), p.texts.music_disliked);
+        f.update(TICK, &[Signal::Back, Signal::Died]);
+        wait(&mut f, p.death_delay + p.run_over_min + 0.1);
+        assert_eq!(f.screen, Screen::RunOver);
+        let didnt = f
+            .menu()
+            .iter()
+            .position(|i| *i == Item::RateMusic(-1))
+            .unwrap();
+        let orders = f.update(TICK, &[Signal::Pick(didnt)]);
+        assert!(orders.contains(&Order::RateMusic {
+            stage: 0,
+            rating: -1
+        }));
+        // A new stage starts unrated.
+        f.update(TICK, &[Signal::Pick(0)]);
+        assert_eq!(f.rated, None);
     }
 
     fn with_chunks() -> Flow {
@@ -884,7 +987,14 @@ mod tests {
         f.update(TICK, &[Signal::Back]);
         assert_eq!(
             f.menu(),
-            [Item::Resume, Item::Restart, Item::ChunkList, Item::Quit]
+            [
+                Item::Resume,
+                Item::Restart,
+                Item::ChunkList,
+                Item::Quit,
+                Item::RateMusic(1),
+                Item::RateMusic(-1)
+            ]
         );
         assert_eq!(f.label(Item::Restart), p.texts.restart_chunk);
         let orders = f.update(TICK, &[Signal::Down, Signal::Confirm]);
